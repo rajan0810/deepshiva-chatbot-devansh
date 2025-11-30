@@ -8,8 +8,12 @@ export async function POST(req: Request) {
   const target = `${backendUrl}/chat/voice`;
 
   // forward the formdata; the Fetch API accepts FormData directly
+  const token = req.headers.get('authorization');
   const res = await fetch(target, {
     method: "POST",
+    headers: {
+      'Authorization': token || ''
+    },
     body: form,
     // credentials, headers left default so multipart boundary preserved
   });
