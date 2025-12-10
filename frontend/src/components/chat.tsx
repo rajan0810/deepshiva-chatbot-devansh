@@ -1,13 +1,18 @@
 "use client";
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Heart, Send, Sparkles, Activity, Loader2, Plus, MessageSquare, LogOut, Menu, X, Volume2, PauseCircle, PlayCircle, XCircle } from 'lucide-react';
+import { 
+  Leaf, Send, Sparkles, Loader2, Plus, MessageCircle, 
+  LogOut, Menu, X, Volume2, Pause, Play, ChevronLeft, 
+  ChevronRight, Youtube, Activity, User 
+} from 'lucide-react';
 import VoiceRecorder from "./VoiceRecorder";
 
+// --- Types ---
 type Message = {
   role: 'user' | 'assistant';
   content: string | React.ReactNode;
-  rawContent?: string; // For TTS
+  rawContent?: string;
   audioUrl?: string;
 };
 
@@ -17,60 +22,64 @@ type Session = {
   created_at: string;
 };
 
-type HistoryItem = {
-  query: string;
-  intent: string;
-};
-
+// --- Helper: Format the bot response ---
 const formatResponse = (response: any): React.ReactNode => {
-  const { intent, reasoning, output, yoga_recommendations, yoga_videos } = response;
+  const { intent, output, yoga_recommendations, yoga_videos } = response;
 
   const renderContent = (content: any) => {
     if (typeof content === 'string') {
       return content.split('\n').map((line, i) => (
-        <p key={i} className="mb-2 last:mb-0">{line}</p>
+        <p key={i} className="mb-2 last:mb-0 text-stone-700 leading-relaxed">{line}</p>
       ));
     }
     if (content?.message) {
       return (
         <div>
-          <p className="font-medium">{content.message}</p>
+          <p className="font-medium text-stone-800">{content.message}</p>
           {content.emergency && (
-            <p className="text-red-400 mt-2 font-semibold">⚠️ This is an emergency.</p>
+            <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-lg flex items-start gap-2 text-red-600">
+              <Activity className="w-5 h-5 shrink-0 mt-0.5" />
+              <p className="font-semibold text-sm">Emergency Warning: {content.emergency}</p>
+            </div>
           )}
         </div>
       );
     }
-    return <pre className="text-sm overflow-x-auto">{JSON.stringify(content, null, 2)}</pre>;
+    return <pre className="text-xs bg-stone-100 p-2 rounded overflow-x-auto">{JSON.stringify(content, null, 2)}</pre>;
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4 font-sans">
       {intent && (
-        <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-full w-fit">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary-pale/30 text-primary-light text-xs font-semibold uppercase tracking-wider">
           <Sparkles className="w-3 h-3" />
-          <span className="font-medium">{intent?.replace(/_/g, ' ')}</span>
+          <span>{intent.replace(/_/g, ' ')}</span>
         </div>
       )}
+      
       {output && (
-        <div className="prose prose-invert max-w-none">
+        <div className="prose prose-stone max-w-none">
           {renderContent(output)}
         </div>
       )}
+
       {yoga_recommendations && (
-        <div className="mt-4 p-4 from-purple-500/10 to-pink-500/10 rounded-xl border border-purple-500/20">
-          <h4 className="font-semibold text-purple-300 mb-3 flex items-center gap-2">
-            🧘 Yoga Recommendations
+        <div className="mt-4 p-5 bg-[#F2E8CF]/30 rounded-xl border border-[#F2E8CF] shadow-sm">
+          <h4 className="font-serif text-primary font-bold mb-3 flex items-center gap-2 text-lg">
+            <Leaf className="w-5 h-5" />
+            Yoga Recommendations
           </h4>
-          <div className="text-gray-200">
+          <div className="text-stone-700">
             {renderContent(yoga_recommendations)}
           </div>
         </div>
       )}
+
       {yoga_videos && Array.isArray(yoga_videos) && yoga_videos.length > 0 && (
         <div className="mt-4">
-          <h4 className="font-semibold text-red-300 mb-3 flex items-center gap-2">
-            📺 Recommended Videos
+          <h4 className="font-serif text-stone-800 font-bold mb-3 flex items-center gap-2">
+            <Youtube className="w-5 h-5 text-red-500" />
+            Curated Videos for You
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {yoga_videos.map((video: any, idx: number) => (
@@ -79,12 +88,26 @@ const formatResponse = (response: any): React.ReactNode => {
                 href={video.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block p-3 bg-white/5 rounded-xl hover:bg-white/10 transition-colors border border-white/10"
+                className="group block overflow-hidden bg-white rounded-xl shadow-sm hover:shadow-organic transition-all border border-stone-200 hover:border-primary-light/30"
               >
                 {video.thumbnail && (
-                  <img src={video.thumbnail} alt={video.title} className="w-full h-32 object-cover rounded-lg mb-2" />
+                  <div className="relative overflow-hidden aspect-video">
+                     <img 
+                       src={video.thumbnail} 
+                       alt={video.title} 
+                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
+                     />
+                     <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors" />
+                     <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">
+                       Watch
+                     </div>
+                  </div>
                 )}
-                <p className="text-sm font-medium text-white line-clamp-2">{video.title}</p>
+                <div className="p-3">
+                  <p className="text-sm font-semibold text-stone-800 line-clamp-2 group-hover:text-primary transition-colors">
+                    {video.title}
+                  </p>
+                </div>
               </a>
             ))}
           </div>
@@ -96,42 +119,61 @@ const formatResponse = (response: any): React.ReactNode => {
 
 export default function HealthcareChat() {
   const router = useRouter();
+  
+  // State
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile sidebar toggle
+  
+  // UI State
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true); // Desktop default open
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
-  // TTS State
+  // Audio State
   const [playingMessageIndex, setPlayingMessageIndex] = useState<number | null>(null);
-  const [isAudioPlaying, setIsAudioPlaying] = useState(false); // Track if audio is actually playing vs paused
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [isAudioLoading, setIsAudioLoading] = useState<number | null>(null);
+  
+  // Refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Check Auth & Fetch Sessions
+  // --- Effects ---
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
       router.push("/login");
       return;
     }
-
     fetchSessions(token);
+    
+    // Auto-collapse sidebar on small screens
+    const handleResize = () => {
+      if (window.innerWidth < 768) setIsSidebarOpen(false);
+      else setIsSidebarOpen(true);
+    };
+    
+    handleResize(); // Initial check
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isLoading]);
+
+  // --- API Functions ---
   const fetchSessions = async (token: string) => {
     try {
       const res = await fetch("/api/sessions", {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
-        const data = await res.json();
-        setSessions(data);
+        setSessions(await res.json());
       }
     } catch (err) {
       console.error("Failed to fetch sessions", err);
@@ -143,7 +185,7 @@ export default function HealthcareChat() {
     if (!token) return;
 
     setCurrentSessionId(sessionId);
-    setIsSidebarOpen(false); // Close sidebar on mobile
+    setIsMobileSidebarOpen(false); // Close mobile drawer
 
     try {
       const res = await fetch(`/api/sessions/${sessionId}/history`, {
@@ -151,21 +193,16 @@ export default function HealthcareChat() {
       });
       if (res.ok) {
         const history = await res.json();
-        // Convert DB history to UI messages
         const uiMessages = history.map((msg: any) => {
-          // Try to parse assistant content if it's JSON
           let content = msg.content;
           if (msg.role === 'assistant') {
             try {
-              // If it looks like JSON, parse it for formatResponse
               if (content.trim().startsWith('{')) {
                 content = formatResponse(JSON.parse(content));
               }
-            } catch (e) {
-              // Keep as string
-            }
+            } catch (e) { /* keep string */ }
           }
-          return { role: msg.role, content };
+          return { role: msg.role, content, rawContent: msg.content };
         });
         setMessages(uiMessages);
       }
@@ -174,21 +211,18 @@ export default function HealthcareChat() {
     }
   };
 
-  const createNewSession = async () => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
+  const createNewSession = () => {
     setMessages([{
       role: 'assistant',
       content: (
-        <div className="space-y-3">
-          <p className="text-lg">👋 Hello! I'm your Healthcare Assistant.</p>
-          <p className="text-gray-300">How can I help you today?</p>
+        <div className="space-y-2">
+          <p className="text-xl font-serif text-primary font-bold">Namaste! 🙏</p>
+          <p className="text-stone-600">I am DeepShiva, your holistic health companion. How can I support your well-being today?</p>
         </div>
       )
     }]);
     setCurrentSessionId(null);
-    setIsSidebarOpen(false);
+    setIsMobileSidebarOpen(false);
   };
 
   const handleLogout = () => {
@@ -196,31 +230,20 @@ export default function HealthcareChat() {
     router.push("/login");
   };
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
   const handleSubmit = async (overrideInput?: string, generateAudio?: boolean) => {
     const textToSend = overrideInput || input.trim();
-
-    if (!textToSend || isLoading) {
-      return;
-    }
+    if (!textToSend || isLoading) return;
 
     const userMessage: Message = { role: 'user', content: textToSend, rawContent: textToSend };
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
     setInput('');
 
-    // Create abort controller for this request
+    // Abort controller
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
     const token = localStorage.getItem("token");
-    if (!token) {
-      router.push("/login");
-      return;
-    }
 
     try {
       const response = await fetch('/api/chat', {
@@ -237,14 +260,11 @@ export default function HealthcareChat() {
         signal: abortController.signal,
       });
 
-      if (!response.ok) throw new Error('Network response was not ok');
+      if (!response.ok) throw new Error('Network response error');
 
       const data = await response.json();
 
-      // If this was a new session, refresh session list
-      if (!currentSessionId) {
-        fetchSessions(token);
-      }
+      if (!currentSessionId) fetchSessions(token!);
 
       const assistantMessage: Message = {
         role: 'assistant',
@@ -254,39 +274,27 @@ export default function HealthcareChat() {
       };
       setMessages((prev) => [...prev, assistantMessage]);
 
-      // Play audio if generated
       if (data.audio_url) {
-        console.log("Attempting to play audio:", data.audio_url);
         const audio = new Audio(data.audio_url);
-        audio.play().catch(e => {
-          console.error("Audio playback error (likely auto-play blocked):", e);
-        });
-
-        // Attach audio_url to the assistant message for the UI to show a play button if needed
-        // Note: We need to extend the Message type or handle it in the content
+        audio.play().catch(console.error);
       }
 
     } catch (error: any) {
-      // Don't show error if request was aborted by user
-      if (error.name === 'AbortError') {
-        console.log('Request cancelled by user');
-        return;
+      if (error.name !== 'AbortError') {
+        setMessages((prev) => [...prev, {
+          role: 'assistant',
+          content: 'I apologize, but I am having trouble connecting right now. Please try again.',
+          rawContent: 'Error occurred.'
+        }]);
       }
-      console.error('Failed to fetch:', error);
-      const errorMessage: Message = {
-        role: 'assistant',
-        content: 'Sorry, I encountered an error. Please try again.',
-        rawContent: 'Sorry, I encountered an error. Please try again.',
-      };
-      setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
       abortControllerRef.current = null;
     }
   };
 
+  // --- Audio Player Logic ---
   const playResponse = async (text: string, index: number) => {
-    // If currently playing this message, toggle pause/play
     if (playingMessageIndex === index && audioRef.current) {
       if (audioRef.current.paused) {
         audioRef.current.play();
@@ -298,7 +306,6 @@ export default function HealthcareChat() {
       return;
     }
 
-    // Stop previous if exists
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
@@ -307,8 +314,6 @@ export default function HealthcareChat() {
     }
 
     const token = localStorage.getItem("token");
-    if (!token) return;
-
     setIsAudioLoading(index);
 
     try {
@@ -326,211 +331,253 @@ export default function HealthcareChat() {
         if (data.audio_url) {
           const audio = new Audio(data.audio_url);
           audioRef.current = audio;
-
           audio.onended = () => {
             setPlayingMessageIndex(null);
             setIsAudioPlaying(false);
-            audioRef.current = null;
           };
-
-          audio.onplay = () => {
-            setIsAudioPlaying(true);
-          };
-
-          audio.onpause = () => {
-            setIsAudioPlaying(false);
-          };
-
-          audio.play().catch(e => console.error(e));
+          audio.play();
           setPlayingMessageIndex(index);
           setIsAudioPlaying(true);
         }
-      } else {
-        console.error("TTS failed");
       }
     } catch (err) {
-      console.error("TTS Error", err);
+      console.error(err);
     } finally {
       setIsAudioLoading(null);
     }
   };
 
-  const stopGeneration = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-      setIsLoading(false);
-    }
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
-    }
-  };
-
+  // --- Render ---
   return (
-    <div className="flex h-screen bg-slate-900 text-white overflow-hidden">
+    <div className="flex h-screen bg-[#FDFCF8] text-stone-800 overflow-hidden font-sans">
 
-      {/* Sidebar (Desktop & Mobile) */}
-      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-950 border-r border-white/10 transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 flex flex-col`}>
-        <div className="p-4 border-b border-white/10 flex items-center justify-between">
-          <div className="flex items-center gap-2 font-bold text-emerald-400">
-            <Heart className="w-5 h-5" fill="currentColor" />
-            <span>DeepShiva</span>
-          </div>
-          <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-gray-400">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+      {/* Mobile Sidebar Overlay */}
+      {isMobileSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/40 z-40 md:hidden backdrop-blur-sm"
+          onClick={() => setIsMobileSidebarOpen(false)}
+        />
+      )}
 
-        <div className="p-4">
-          <button
-            onClick={createNewSession}
-            className="w-full flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl transition-colors font-medium"
-          >
-            <Plus className="w-4 h-4" />
-            New Chat
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-2 space-y-1">
-          {sessions.map((session) => (
-            <button
-              key={session.id}
-              onClick={() => loadSession(session.id)}
-              className={`w-full text-left px-3 py-3 rounded-lg text-sm flex items-center gap-3 transition-colors ${currentSessionId === session.id ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'}`}
-            >
-              <MessageSquare className="w-4 h-4 shrink-0" />
-              <span className="truncate">{session.title}</span>
+      {/* Sidebar Navigation */}
+      <aside 
+        className={`
+          fixed md:relative z-50 h-full flex-shrink-0 bg-[#3A5A40] text-stone-100 transition-all duration-300 ease-in-out shadow-xl
+          ${isMobileSidebarOpen ? 'translate-x-0 w-72' : '-translate-x-full md:translate-x-0'}
+          ${isSidebarOpen ? 'md:w-72' : 'md:w-[0px] md:overflow-hidden'}
+        `}
+      >
+        <div className="flex flex-col h-full w-72"> {/* Fixed width inner container prevents content squishing */}
+          
+          {/* Sidebar Header */}
+          <div className="p-6 flex items-center justify-between border-b border-white/10">
+            <div className="flex items-center gap-3">
+              <div className="bg-white/10 p-2 rounded-lg">
+                <Leaf className="w-5 h-5 text-emerald-200" />
+              </div>
+              <span className="font-serif font-bold text-xl text-[#F2E8CF]">DeepShiva</span>
+            </div>
+            <button onClick={() => setIsMobileSidebarOpen(false)} className="md:hidden text-white/70 hover:text-white">
+              <X className="w-6 h-6" />
             </button>
-          ))}
+          </div>
+
+          {/* New Chat Button */}
+          <div className="p-4">
+            <button
+              onClick={createNewSession}
+              className="w-full flex items-center justify-center gap-2 bg-[#F2E8CF] hover:bg-white text-[#3A5A40] px-4 py-3 rounded-xl transition-all shadow-md hover:shadow-lg font-bold"
+            >
+              <Plus className="w-5 h-5" />
+              <span>New Consultation</span>
+            </button>
+          </div>
+
+          {/* Session List */}
+          <div className="flex-1 overflow-y-auto px-4 py-2 space-y-2 scrollbar-thin scrollbar-thumb-white/20">
+            <h3 className="text-xs font-semibold text-emerald-200/70 uppercase tracking-widest mb-2 px-2">History</h3>
+            {sessions.map((session) => (
+              <button
+                key={session.id}
+                onClick={() => loadSession(session.id)}
+                className={`w-full text-left px-4 py-3 rounded-xl text-sm flex items-center gap-3 transition-all border border-transparent
+                  ${currentSessionId === session.id 
+                    ? 'bg-white/10 text-white border-white/10 shadow-sm' 
+                    : 'text-stone-300 hover:bg-white/5 hover:text-white'
+                  }`}
+              >
+                <MessageCircle className="w-4 h-4 shrink-0 opacity-70" />
+                <span className="truncate">{session.title}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Footer */}
+          <div className="p-4 border-t border-white/10 bg-[#334f38] space-y-2">
+            
+            {/* NEW: Profile Button */}
+            <button
+              onClick={() => router.push('/profile')}
+              className="w-full flex items-center gap-3 text-stone-300 hover:text-white hover:bg-white/10 px-4 py-3 rounded-lg transition-colors text-sm font-medium"
+            >
+              <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center">
+                 <User className="w-3 h-3" />
+              </div>
+              My Profile
+            </button>
+
+            {/* Logout Button */}
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-3 text-stone-300 hover:text-red-300 hover:bg-red-500/10 px-4 py-3 rounded-lg transition-colors text-sm font-medium"
+            >
+              <LogOut className="w-4 h-4" />
+              Sign Out
+            </button>
+          </div>
         </div>
+      </aside>
 
-        <div className="p-4 border-t border-white/10">
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-2 text-gray-400 hover:text-red-400 px-3 py-2 rounded-lg transition-colors text-sm"
-          >
-            <LogOut className="w-4 h-4" />
-            Sign Out
-          </button>
-        </div>
-      </div>
-
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col h-full relative">
-
-        {/* Header */}
-        <header className="bg-white/5 backdrop-blur-xl border-b border-white/10 px-4 py-3 shadow-xl flex items-center justify-between">
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col h-full relative w-full">
+        
+        {/* Top Navbar */}
+        <header className="bg-white border-b border-stone-200 h-16 flex items-center px-4 justify-between shadow-sm z-10">
           <div className="flex items-center gap-3">
-            <button onClick={() => setIsSidebarOpen(true)} className="md:hidden text-gray-300">
+            {/* Sidebar Toggles */}
+            <button 
+              onClick={() => setIsMobileSidebarOpen(true)} 
+              className="md:hidden p-2 text-stone-600 hover:bg-stone-100 rounded-lg"
+            >
               <Menu className="w-6 h-6" />
             </button>
+            
+            <button 
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
+              className="hidden md:flex p-2 text-stone-500 hover:text-[#3A5A40] hover:bg-stone-100 rounded-lg transition-colors"
+            >
+              {isSidebarOpen ? <ChevronLeft className="w-5 h-5"/> : <ChevronRight className="w-5 h-5"/>}
+            </button>
+
             <div>
-              <h1 className="text-lg font-bold text-white">Healthcare Assistant</h1>
-              <p className="text-xs text-emerald-300 flex items-center gap-1">
-                <Activity className="w-3 h-3" />
-                AI-Powered • Secure • Private
-              </p>
+              <h1 className="font-serif font-bold text-stone-800 text-lg">Holistic Assistant</h1>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span className="text-xs text-stone-500 font-medium">Ayurveda & Yoga Intelligence</span>
+              </div>
             </div>
           </div>
         </header>
 
-        {/* Messages */}
-        <div className="flex-1 overflow-hidden relative">
-          <div className="h-full max-w-4xl mx-auto px-4 py-6 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+        {/* Chat Messages Area */}
+        <div className="flex-1 overflow-hidden relative bg-[url('https://www.transparenttextures.com/patterns/cream-paper.png')]"> 
+          {/* Optional: You can remove the bg-url if you prefer plain color, or add a subtle pattern */}
+          
+          <div className="h-full max-w-4xl mx-auto px-4 md:px-8 py-6 overflow-y-auto scrollbar-thin">
+            
+            {/* Empty State */}
             {messages.length === 0 && !currentSessionId && (
-              <div className="flex flex-col items-center justify-center h-full text-center text-gray-400 space-y-4">
-                <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center">
-                  <Sparkles className="w-8 h-8 text-emerald-400" />
+              <div className="flex flex-col items-center justify-center h-[80%] text-center space-y-6 animate-in fade-in duration-700">
+                <div className="w-24 h-24 bg-[#E0E5D9] rounded-full flex items-center justify-center mb-4 shadow-inner">
+                  <Leaf className="w-12 h-12 text-[#3A5A40]" />
                 </div>
-                <p className="text-lg font-medium text-white">How can I assist you today?</p>
+                <div>
+                  <h2 className="text-3xl font-serif font-bold text-[#3A5A40] mb-2">Swastha</h2>
+                  <p className="text-stone-500 max-w-md mx-auto">
+                    "Health is not just the absence of disease, but the balance of mind, body, and spirit."
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg w-full mt-8">
+                  {["Remedies for migraine?", "Yoga for back pain", "Pitt dosha diet", "Meditation for sleep"].map((q, i) => (
+                    <button 
+                      key={i} 
+                      onClick={() => handleSubmit(q)}
+                      className="text-sm bg-white border border-stone-200 p-3 rounded-xl hover:border-[#3A5A40] hover:text-[#3A5A40] hover:shadow-md transition-all text-stone-600"
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
-            <div className="space-y-6 pb-4">
+            {/* Message List */}
+            <div className="space-y-8 pb-4">
               {messages.map((msg, index) => (
-                <div
-                  key={index}
-                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fadeIn`}
-                >
-                  <div className="flex gap-3 max-w-[85%]">
-                    {msg.role === 'assistant' && (
-                      <div className="w-8 h-8 from-emerald-400 to-cyan-500 rounded-lg flex items-center justify-center shadow-lg shrink-0">
-                        <Heart className="w-4 h-4 text-white" fill="white" />
-                      </div>
-                    )}
-                    <div
-                      className={`rounded-2xl p-4 shadow-lg ${msg.role === 'user'
-                        ? 'from-blue-500 to-cyan-500 bg-gradient-to-r text-white ml-auto'
-                        : 'bg-white/10 backdrop-blur-xl text-gray-100 border border-white/10'
-                        }`}
+                <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  
+                  <div className={`flex gap-4 max-w-[90%] md:max-w-[80%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                    
+                    {/* Avatar */}
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-sm border
+                      ${msg.role === 'assistant' 
+                        ? 'bg-[#E0E5D9] border-[#3A5A40]/20' 
+                        : 'bg-[#3A5A40] border-[#3A5A40]'
+                      }`}
                     >
-                      <div className="text-sm leading-relaxed">{msg.content}</div>
+                      {msg.role === 'assistant' ? (
+                        <Leaf className="w-5 h-5 text-[#3A5A40]" />
+                      ) : (
+                        <span className="text-white font-serif font-bold">You</span>
+                      )}
+                    </div>
 
-                      {/* Audio Controls */}
+                    {/* Bubble */}
+                    <div className={`
+                      rounded-2xl p-5 shadow-sm relative group transition-all
+                      ${msg.role === 'user'
+                        ? 'bg-[#3A5A40] text-white rounded-tr-none' // User Bubble
+                        : 'bg-white text-stone-800 border border-stone-100 rounded-tl-none hover:shadow-organic' // Bot Bubble
+                      }
+                    `}>
+                      <div className="text-[15px] leading-7">
+                        {msg.content}
+                      </div>
+
+                      {/* Audio Controls for Bot */}
                       {msg.role === 'assistant' && (
-                        <div className="mt-2 flex items-center gap-2 pt-2 border-t border-white/5">
+                        <div className="mt-4 pt-3 border-t border-stone-100 flex items-center gap-3">
                           <button
                             onClick={() => {
-                              const contentToRead = msg.rawContent || "No text available";
+                              const contentToRead = msg.rawContent || "No content available";
                               playResponse(contentToRead, index);
                             }}
                             disabled={isAudioLoading === index}
-                            className={`text-xs flex items-center gap-2 px-3 py-1.5 rounded-full transition-all border ${playingMessageIndex === index
-                              ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
-                              : "bg-white/5 text-gray-400 border-white/10 hover:bg-white/10 hover:text-emerald-300"
-                              }`}
+                            className={`
+                              flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all border
+                              ${playingMessageIndex === index
+                                ? "bg-[#3A5A40] text-white border-[#3A5A40]"
+                                : "bg-stone-50 text-stone-600 border-stone-200 hover:border-[#3A5A40] hover:text-[#3A5A40]"
+                              }
+                            `}
                           >
                             {isAudioLoading === index ? (
-                              <>
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                <span>Generating...</span>
-                              </>
+                              <Loader2 className="w-3 h-3 animate-spin" />
                             ) : playingMessageIndex === index && isAudioPlaying ? (
-                              <>
-                                <PauseCircle className="w-4 h-4" />
-                                <span>Pause</span>
-                              </>
-                            ) : playingMessageIndex === index && !isAudioPlaying ? (
-                              <>
-                                <PlayCircle className="w-4 h-4" />
-                                <span>Resume</span>
-                              </>
+                              <Pause className="w-3 h-3" />
                             ) : (
-                              <>
-                                <Volume2 className="w-4 h-4" />
-                                <span>Read Aloud</span>
-                              </>
+                              <Play className="w-3 h-3" />
                             )}
+                            {playingMessageIndex === index && isAudioPlaying ? "Pause Voice" : "Listen"}
                           </button>
                         </div>
                       )}
                     </div>
-                    {msg.role === 'user' && (
-                      <div className="w-8 h-8 from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center shadow-lg shrink-0">
-                        <span className="text-white font-semibold text-xs">You</span>
-                      </div>
-                    )}
                   </div>
                 </div>
               ))}
 
               {isLoading && (
-                <div className="flex justify-start animate-fadeIn">
-                  <div className="flex gap-3 max-w-[85%]">
-                    <div className="w-8 h-8 from-emerald-400 to-cyan-500 rounded-lg flex items-center justify-center shadow-lg">
-                      <Heart className="w-4 h-4 text-white" fill="white" />
+                <div className="flex justify-start">
+                   <div className="flex gap-4 max-w-[80%]">
+                    <div className="w-10 h-10 rounded-full bg-[#E0E5D9] flex items-center justify-center shrink-0">
+                      <Leaf className="w-5 h-5 text-[#3A5A40]" />
                     </div>
-                    <div className="rounded-2xl p-4 bg-white/10 backdrop-blur-xl border border-white/10 shadow-lg">
-                      <div className="flex items-center gap-2 text-gray-300">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span className="text-sm">Analyzing...</span>
-                      </div>
+                    <div className="bg-white p-4 rounded-2xl rounded-tl-none border border-stone-100 shadow-sm flex items-center gap-3">
+                       <Loader2 className="w-5 h-5 animate-spin text-[#3A5A40]" />
+                       <span className="text-stone-500 text-sm font-medium">Consulting Ayurvedic Knowledge Base...</span>
                     </div>
-                  </div>
+                   </div>
                 </div>
               )}
               <div ref={chatEndRef} />
@@ -539,53 +586,42 @@ export default function HealthcareChat() {
         </div>
 
         {/* Input Area */}
-        <div className="bg-white/5 backdrop-blur-xl border-t border-white/10 px-4 py-4 shadow-2xl">
-          <div className="max-w-4xl mx-auto flex gap-3 items-end">
-            <div className="flex-1 relative">
-              <input
+        <div className="bg-white border-t border-stone-200 px-4 py-5 pb-6">
+          <div className="max-w-4xl mx-auto flex items-end gap-3">
+            
+            <div className="relative flex-1 group">
+               <input
                 ref={inputRef}
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyPress={handleKeyPress}
-                className="w-full px-5 py-3.5 rounded-2xl bg-white/10 backdrop-blur-sm text-white border border-white/20 focus:outline-none focus:ring-2 focus:ring-emerald-400/50 focus:border-emerald-400/50 placeholder-gray-400 transition-all"
-                placeholder="Ask about health schemes, ayurveda, symptoms..."
+                onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmit()}
+                className="w-full pl-6 pr-4 py-4 rounded-2xl bg-stone-50 border border-stone-200 focus:outline-none focus:ring-2 focus:ring-[#3A5A40]/20 focus:border-[#3A5A40] text-stone-800 placeholder:text-stone-400 transition-all shadow-inner"
+                placeholder="Ask about symptoms, doshas, or yoga..."
                 disabled={isLoading}
               />
             </div>
 
-            <VoiceRecorder
-              onTranscribed={(text, language) => {
-                // Immediate/Optimistic: Call submit immediately with the transcribed text
-                // requesting audio generation
-                handleSubmit(text, true);
-              }}
-              onError={(err) => {
-                console.error("Voice error:", err);
-              }}
-            />
+            <div className="flex items-center gap-2">
+              <VoiceRecorder
+                onTranscribed={(text) => handleSubmit(text, true)}
+                onError={console.error}
+              />
 
-            <button
-              onClick={() => handleSubmit()}
-              className="px-4 py-3.5 from-emerald-500 to-cyan-500 bg-gradient-to-r hover:from-emerald-600 hover:to-cyan-600 text-white rounded-2xl font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2 shadow-lg"
-              disabled={isLoading || !input.trim()}
-            >
-              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-            </button>
+              <button
+                onClick={() => handleSubmit()}
+                disabled={isLoading || !input.trim()}
+                className="p-4 bg-[#3A5A40] hover:bg-[#2F4A33] text-white rounded-full transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:shadow-none hover:-translate-y-1 active:translate-y-0"
+              >
+                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+              </button>
+            </div>
           </div>
-          <p className="text-xs text-gray-500 mt-3 text-center">
-            This assistant provides general information. Always consult healthcare professionals.
+          <p className="text-center text-[11px] text-stone-400 mt-3 font-medium">
+            Ayurveda supports, it does not replace. In emergencies, seek professional medical help immediately.
           </p>
         </div>
-      </div>
-
-      <style jsx>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fadeIn { animation: fadeIn 0.4s ease-out; }
-      `}</style>
+      </main>
     </div>
   );
 }

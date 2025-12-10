@@ -1,9 +1,9 @@
-// In frontend/src/app/page.tsx
 import Chat from '@/components/chat';
 
 export default function Home() {
   return (
-    <main className="bg-gray-900 text-white min-h-screen">
+    // The Chat component now controls the full screen background
+    <main className="h-screen w-full bg-[#FDFCF8]">
       <Chat />
     </main>
   );

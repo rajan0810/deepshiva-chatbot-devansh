@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Heart, Lock, Mail, Loader2 } from "lucide-react";
+import { Leaf, Lock, Mail, Loader2, ArrowRight } from "lucide-react";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -42,67 +42,86 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 p-4">
-            <div className="w-full max-w-md bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-2xl">
+        <div className="min-h-screen flex items-center justify-center bg-[#FDFCF8] p-4 font-sans relative overflow-hidden">
+            
+            {/* Background Decorative Elements */}
+            <div className="absolute top-0 left-0 w-64 h-64 bg-[#3A5A40]/5 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
+            <div className="absolute bottom-0 right-0 w-96 h-96 bg-[#A3B18A]/10 rounded-full blur-3xl translate-x-1/3 translate-y-1/3"></div>
+
+            <div className="w-full max-w-md z-10">
+                {/* Header Logo Area */}
                 <div className="flex flex-col items-center mb-8">
-                    <div className="w-12 h-12 from-emerald-400 to-cyan-500 bg-gradient-to-br rounded-xl flex items-center justify-center shadow-lg mb-4">
-                        <Heart className="w-6 h-6 text-white" fill="white" />
+                    <div className="w-16 h-16 bg-[#3A5A40] rounded-2xl flex items-center justify-center shadow-lg shadow-[#3A5A40]/20 mb-6 rotate-3 transition-transform hover:rotate-0">
+                        <Leaf className="w-8 h-8 text-[#F2E8CF]" strokeWidth={2} />
                     </div>
-                    <h1 className="text-2xl font-bold text-white">Welcome Back</h1>
-                    <p className="text-gray-400">Sign in to your account</p>
+                    <h1 className="text-3xl font-serif font-bold text-stone-800 text-center">Welcome to DeepShiva</h1>
+                    <p className="text-stone-500 mt-2 text-center">Your Ayurvedic path to wellness begins here.</p>
                 </div>
 
-                <form onSubmit={handleLogin} className="space-y-6">
-                    {error && (
-                        <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-lg text-sm text-center">
-                            {error}
+                {/* Login Card */}
+                <div className="bg-white rounded-3xl shadow-xl shadow-stone-200/50 p-8 border border-stone-100">
+                    <form onSubmit={handleLogin} className="space-y-6">
+                        {error && (
+                            <div className="bg-red-50 border border-red-100 text-red-600 p-3 rounded-xl text-sm text-center font-medium">
+                                {error}
+                            </div>
+                        )}
+
+                        <div className="space-y-2">
+                            <label className="text-sm font-bold text-stone-700 ml-1">Email Address</label>
+                            <div className="relative group">
+                                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400 group-focus-within:text-[#3A5A40] transition-colors" />
+                                <input
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    className="w-full bg-stone-50 border border-stone-200 rounded-xl py-3.5 pl-12 pr-4 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-[#3A5A40]/20 focus:border-[#3A5A40] transition-all"
+                                    placeholder="you@example.com"
+                                    required
+                                />
+                            </div>
                         </div>
-                    )}
 
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-300">Email</label>
-                        <div className="relative">
-                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-                            <input
-                                type="email"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                                placeholder="you@example.com"
-                                required
-                            />
+                        <div className="space-y-2">
+                            <label className="text-sm font-bold text-stone-700 ml-1">Password</label>
+                            <div className="relative group">
+                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400 group-focus-within:text-[#3A5A40] transition-colors" />
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    className="w-full bg-stone-50 border border-stone-200 rounded-xl py-3.5 pl-12 pr-4 text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-[#3A5A40]/20 focus:border-[#3A5A40] transition-all"
+                                    placeholder="••••••••"
+                                    required
+                                />
+                            </div>
                         </div>
-                    </div>
 
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-300">Password</label>
-                        <div className="relative">
-                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-                            <input
-                                type="password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                                placeholder="••••••••"
-                                required
-                            />
-                        </div>
-                    </div>
+                        <button
+                            type="submit"
+                            disabled={isLoading}
+                            className="w-full bg-[#3A5A40] hover:bg-[#2F4A33] text-white font-bold py-4 rounded-xl transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 flex items-center justify-center gap-2 group"
+                        >
+                            {isLoading ? (
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                            ) : (
+                                <>
+                                    Sign In 
+                                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                                </>
+                            )}
+                        </button>
+                    </form>
+                </div>
 
-                    <button
-                        type="submit"
-                        disabled={isLoading}
-                        className="w-full bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 text-white font-medium py-3 rounded-xl transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center"
-                    >
-                        {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Sign In"}
-                    </button>
-                </form>
-
-                <div className="mt-6 text-center text-sm text-gray-400">
-                    Don't have an account?{" "}
-                    <Link href="/signup" className="text-emerald-400 hover:text-emerald-300 font-medium">
-                        Sign up
-                    </Link>
+                {/* Footer */}
+                <div className="mt-8 text-center">
+                    <p className="text-stone-500">
+                        Don't have an account?{" "}
+                        <Link href="/signup" className="text-[#3A5A40] font-bold hover:underline hover:text-[#2F4A33] transition-colors">
+                            Start your journey
+                        </Link>
+                    </p>
                 </div>
             </div>
         </div>

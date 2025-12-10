@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useRef, useState } from "react";
+import { Mic, Square } from "lucide-react";
 
 type Props = {
   onTranscribed: (text: string, language?: string) => void;
@@ -30,7 +31,7 @@ export default function VoiceRecorder({ onTranscribed, onError }: Props) {
           fd.append("file", blob, "voice.webm");
 
           const token = localStorage.getItem("token");
-          // Use new decouple endpoint
+          
           const res = await fetch("/api/transcribe", {
             method: "POST",
             headers: {
@@ -50,10 +51,8 @@ export default function VoiceRecorder({ onTranscribed, onError }: Props) {
           }
 
           const json = await res.json();
-          // Expecting: { text, language }
           onTranscribed(json.text, json.language);
 
-          // Audio playback logic moved to parent component
         } catch (err: any) {
           onError?.(err?.message || "Upload failed");
         }
@@ -77,18 +76,17 @@ export default function VoiceRecorder({ onTranscribed, onError }: Props) {
   return (
     <button
       onClick={() => (recording ? stopRecording() : startRecording())}
-      className={`p-3 rounded-full shadow-lg transition-all flex items-center gap-2 ${recording
-        ? "bg-red-500 hover:bg-red-600 text-white animate-pulse"
-        : "bg-white/10 hover:bg-white/20 text-white border border-white/10"
-        }`}
+      className={`p-3.5 rounded-full shadow-lg transition-all duration-300 flex items-center justify-center group ${
+        recording
+          ? "bg-accent text-white ring-4 ring-accent/20 animate-pulse"
+          : "bg-white text-primary-light border border-primary-light/20 hover:bg-primary hover:text-white hover:shadow-organic hover:-translate-y-0.5"
+      }`}
+      title={recording ? "Stop Recording" : "Speak your query"}
     >
       {recording ? (
-        <>
-          <div className="w-2 h-2 rounded-full bg-white animate-ping" />
-          <span className="text-sm font-medium">Recording...</span>
-        </>
+        <Square className="w-5 h-5 fill-current" />
       ) : (
-        "🎤"
+        <Mic className="w-5 h-5" />
       )}
     </button>
   );
