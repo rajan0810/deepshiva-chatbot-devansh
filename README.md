@@ -95,6 +95,8 @@ cd ..
 
 ### 2. Environment Setup
 
+**⚠️ IMPORTANT: Create `.env` file BEFORE running the application!**
+
 **Create `.env` file from example:**
 ```bash
 cp .env.example .env
@@ -125,6 +127,8 @@ BACKEND_URL=http://localhost:8000
 # JWT Secret (generate random string)
 SECRET_KEY=your-super-secret-key
 ```
+
+**❌ Common Error**: If you see "Cannot read properties of undefined (reading 'app')" in the frontend, it means your `.env` file is missing or incomplete. Make sure ALL Firebase variables are filled in.
 
 ### 3. Firebase Setup
 

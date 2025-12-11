@@ -48,6 +48,14 @@ export default function LoginPage() {
         setIsGoogleLoading(true);
         setError("");
 
+        // Check if Firebase is initialized
+        if (!auth || !googleProvider) {
+            setError("Firebase is not configured. Please contact the administrator.");
+            setIsGoogleLoading(false);
+            console.error("Firebase auth or googleProvider is undefined. Check your .env file.");
+            return;
+        }
+
         try {
             const result = await signInWithPopup(auth, googleProvider);
             const user = result.user;
