@@ -3,10 +3,10 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import ReactMarkdown from 'react-markdown';
-import { 
-  Leaf, Send, Sparkles, Loader2, Plus, MessageCircle, 
-  LogOut, Menu, X, Volume2, Pause, Play, ChevronLeft, 
-  ChevronRight, Youtube, Activity, User 
+import {
+  Leaf, Send, Sparkles, Loader2, Plus, MessageCircle,
+  LogOut, Menu, X, Volume2, Pause, Play, ChevronLeft,
+  ChevronRight, Youtube, Activity, User
 } from 'lucide-react';
 import VoiceRecorder from "./VoiceRecorder";
 
@@ -24,11 +24,19 @@ type Session = {
   created_at: string;
 };
 
-// --- Helper: Format the bot response ---
-const formatResponse = (response: any): React.ReactNode => {
-  const { intent, output, yoga_recommendations, yoga_videos } = response;
 
-  const renderContent = (content: any) => {
+
+interface ChatResponse {
+  intent?: string;
+  output?: string | { message: string; emergency?: boolean };
+  yoga_videos?: Array<{ title: string; url: string; thumbnail?: string }>;
+  yoga_recommendations?: string;
+}
+
+const formatResponse = (response: ChatResponse): React.ReactNode => {
+  const { intent, output, yoga_videos, yoga_recommendations } = response;
+
+  const renderContent = (content: string | { message: string; emergency?: boolean } | unknown) => {
     if (typeof content === 'string') {
       return (
         <div className="prose prose-stone max-w-none">
@@ -49,15 +57,17 @@ const formatResponse = (response: any): React.ReactNode => {
           </ReactMarkdown>
         </div>
       );
+
     }
-    if (content?.message) {
+    if (content && typeof content === 'object' && 'message' in content) {
+      const msgContent = content as { message: string; emergency?: boolean };
       return (
         <div>
-          <p className="font-medium text-stone-800">{content.message}</p>
-          {content.emergency && (
+          <p className="font-medium text-stone-800">{msgContent.message}</p>
+          {msgContent.emergency && (
             <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-lg flex items-start gap-2 text-red-600">
               <Activity className="w-5 h-5 shrink-0 mt-0.5" />
-              <p className="font-semibold text-sm">Emergency Warning: {content.emergency}</p>
+              <p className="font-semibold text-sm">Emergency Warning: {msgContent.emergency}</p>
             </div>
           )}
         </div>
@@ -74,7 +84,7 @@ const formatResponse = (response: any): React.ReactNode => {
           <span>{intent.replace(/_/g, ' ')}</span>
         </div>
       )}
-      
+
       {output && (
         <div className="prose prose-stone max-w-none">
           {renderContent(output)}
@@ -93,6 +103,7 @@ const formatResponse = (response: any): React.ReactNode => {
         </div>
       )}
 
+
       {yoga_videos && Array.isArray(yoga_videos) && yoga_videos.length > 0 && (
         <div className="mt-4">
           <h4 className="font-serif text-stone-800 font-bold mb-3 flex items-center gap-2">
@@ -100,7 +111,7 @@ const formatResponse = (response: any): React.ReactNode => {
             Curated Videos for You
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {yoga_videos.map((video: any, idx: number) => (
+            {yoga_videos.map((video, idx: number) => (
               <a
                 key={idx}
                 href={video.url}
@@ -110,15 +121,15 @@ const formatResponse = (response: any): React.ReactNode => {
               >
                 {video.thumbnail && (
                   <div className="relative overflow-hidden aspect-video">
-                     <img 
-                       src={video.thumbnail} 
-                       alt={video.title} 
-                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
-                     />
-                     <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors" />
-                     <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">
-                       Watch
-                     </div>
+                    <img
+                      src={video.thumbnail}
+                      alt={video.title}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                    <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors" />
+                    <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">
+                      Watch
+                    </div>
                   </div>
                 )}
                 <div className="p-3">
@@ -137,7 +148,7 @@ const formatResponse = (response: any): React.ReactNode => {
 
 export default function HealthcareChat() {
   const router = useRouter();
-  
+
   // State
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -149,7 +160,7 @@ export default function HealthcareChat() {
     display_name?: string;
     photo_url?: string;
   } | null>(null);
-  
+
   // UI State
   const [isSidebarOpen, setIsSidebarOpen] = useState(true); // Desktop default open
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -158,7 +169,7 @@ export default function HealthcareChat() {
   const [playingMessageIndex, setPlayingMessageIndex] = useState<number | null>(null);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [isAudioLoading, setIsAudioLoading] = useState<number | null>(null);
-  
+
   // Refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -174,17 +185,18 @@ export default function HealthcareChat() {
     }
     fetchSessions(token);
     fetchUserProfile(token);
-    
+
     // Auto-collapse sidebar on small screens
     const handleResize = () => {
       if (window.innerWidth < 768) setIsSidebarOpen(false);
       else setIsSidebarOpen(true);
     };
-    
+
     handleResize(); // Initial check
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [router]);
+
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -288,6 +300,8 @@ export default function HealthcareChat() {
           <p className="text-xl font-serif text-primary font-bold">Namaste! 🙏</p>
           <p className="text-stone-600">I am DeepShiva, your holistic health companion. How can I support your well-being today?</p>
         </div>
+
+
       )
     }]);
     setCurrentSessionId(null);
@@ -429,14 +443,14 @@ export default function HealthcareChat() {
 
       {/* Mobile Sidebar Overlay */}
       {isMobileSidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/40 z-40 md:hidden backdrop-blur-sm"
           onClick={() => setIsMobileSidebarOpen(false)}
         />
       )}
 
       {/* Sidebar Navigation */}
-      <aside 
+      <aside
         className={`
           fixed md:relative z-50 h-full flex-shrink-0 bg-[#3A5A40] text-stone-100 transition-all duration-300 ease-in-out shadow-xl
           ${isMobileSidebarOpen ? 'translate-x-0 w-72' : '-translate-x-full md:translate-x-0'}
@@ -444,7 +458,7 @@ export default function HealthcareChat() {
         `}
       >
         <div className="flex flex-col h-full w-72"> {/* Fixed width inner container prevents content squishing */}
-          
+
           {/* Sidebar Header */}
           <div className="p-6 flex items-center justify-between border-b border-white/10">
             <div className="flex items-center gap-3">
@@ -477,8 +491,8 @@ export default function HealthcareChat() {
                 key={session.id}
                 onClick={() => loadSession(session.id)}
                 className={`w-full text-left px-4 py-3 rounded-xl text-sm flex items-center gap-3 transition-all border border-transparent
-                  ${currentSessionId === session.id 
-                    ? 'bg-white/10 text-white border-white/10 shadow-sm' 
+                  ${currentSessionId === session.id
+                    ? 'bg-white/10 text-white border-white/10 shadow-sm'
                     : 'text-stone-300 hover:bg-white/5 hover:text-white'
                   }`}
               >
@@ -490,14 +504,14 @@ export default function HealthcareChat() {
 
           {/* Footer */}
           <div className="p-4 border-t border-white/10 bg-[#334f38] space-y-2">
-            
+
             {/* NEW: Profile Button */}
             <button
               onClick={() => router.push('/profile')}
               className="w-full flex items-center gap-3 text-stone-300 hover:text-white hover:bg-white/10 px-4 py-3 rounded-lg transition-colors text-sm font-medium"
             >
               <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center">
-                 <User className="w-3 h-3" />
+                <User className="w-3 h-3" />
               </div>
               My Profile
             </button>
@@ -516,23 +530,23 @@ export default function HealthcareChat() {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col h-full relative w-full">
-        
+
         {/* Top Navbar */}
         <header className="bg-white border-b border-stone-200 h-16 flex items-center px-4 justify-between shadow-sm z-10">
           <div className="flex items-center gap-3">
             {/* Sidebar Toggles */}
-            <button 
-              onClick={() => setIsMobileSidebarOpen(true)} 
+            <button
+              onClick={() => setIsMobileSidebarOpen(true)}
               className="md:hidden p-2 text-stone-600 hover:bg-stone-100 rounded-lg"
             >
               <Menu className="w-6 h-6" />
             </button>
-            
-            <button 
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
+
+            <button
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
               className="hidden md:flex p-2 text-stone-500 hover:text-[#3A5A40] hover:bg-stone-100 rounded-lg transition-colors"
             >
-              {isSidebarOpen ? <ChevronLeft className="w-5 h-5"/> : <ChevronRight className="w-5 h-5"/>}
+              {isSidebarOpen ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
             </button>
 
             <div>
@@ -548,9 +562,9 @@ export default function HealthcareChat() {
           {userProfile && (
             <div className="flex items-center gap-2">
               {userProfile.photo_url ? (
-                <Image 
-                  src={userProfile.photo_url} 
-                  alt={userProfile.display_name || 'User'} 
+                <Image
+                  src={userProfile.photo_url}
+                  alt={userProfile.display_name || 'User'}
                   width={36}
                   height={36}
                   className="rounded-full border-2 border-[#3A5A40]/20 shadow-sm"
@@ -571,11 +585,11 @@ export default function HealthcareChat() {
         </header>
 
         {/* Chat Messages Area */}
-        <div className="flex-1 overflow-hidden relative bg-[url('https://www.transparenttextures.com/patterns/cream-paper.png')]"> 
+        <div className="flex-1 overflow-hidden relative bg-[url('https://www.transparenttextures.com/patterns/cream-paper.png')]">
           {/* Optional: You can remove the bg-url if you prefer plain color, or add a subtle pattern */}
-          
+
           <div className="h-full max-w-4xl mx-auto px-4 md:px-8 py-6 overflow-y-auto scrollbar-thin">
-            
+
             {/* Empty State */}
             {messages.length === 0 && !currentSessionId && (
               <div className="flex flex-col items-center justify-center h-[80%] text-center space-y-6 animate-in fade-in duration-700">
@@ -590,8 +604,8 @@ export default function HealthcareChat() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg w-full mt-8">
                   {["Remedies for migraine?", "Yoga for back pain", "Pitt dosha diet", "Meditation for sleep"].map((q, i) => (
-                    <button 
-                      key={i} 
+                    <button
+                      key={i}
                       onClick={() => handleSubmit(q)}
                       className="text-sm bg-white border border-stone-200 p-3 rounded-xl hover:border-[#3A5A40] hover:text-[#3A5A40] hover:shadow-md transition-all text-stone-600"
                     >
@@ -606,22 +620,23 @@ export default function HealthcareChat() {
             <div className="space-y-8 pb-4">
               {messages.map((msg, index) => (
                 <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  
+
                   <div className={`flex gap-4 max-w-[90%] md:max-w-[80%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                    
+
                     {/* Avatar */}
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-sm border
-                      ${msg.role === 'assistant' 
-                        ? 'bg-[#E0E5D9] border-[#3A5A40]/20' 
+                      ${msg.role === 'assistant'
+                        ? 'bg-[#E0E5D9] border-[#3A5A40]/20'
                         : 'bg-[#3A5A40] border-[#3A5A40]'
                       }`}
+
                     >
                       {msg.role === 'assistant' ? (
                         <Leaf className="w-5 h-5 text-[#3A5A40]" />
                       ) : userProfile?.photo_url ? (
-                        <Image 
-                          src={userProfile.photo_url} 
-                          alt={userProfile.display_name || 'User'} 
+                        <Image
+                          src={userProfile.photo_url}
+                          alt={userProfile.display_name || 'User'}
                           width={40}
                           height={40}
                           className="rounded-full object-cover"
@@ -686,15 +701,15 @@ export default function HealthcareChat() {
 
               {isLoading && (
                 <div className="flex justify-start">
-                   <div className="flex gap-4 max-w-[80%]">
+                  <div className="flex gap-4 max-w-[80%]">
                     <div className="w-10 h-10 rounded-full bg-[#E0E5D9] flex items-center justify-center shrink-0">
                       <Leaf className="w-5 h-5 text-[#3A5A40]" />
                     </div>
                     <div className="bg-white p-4 rounded-2xl rounded-tl-none border border-stone-100 shadow-sm flex items-center gap-3">
-                       <Loader2 className="w-5 h-5 animate-spin text-[#3A5A40]" />
-                       <span className="text-stone-500 text-sm font-medium">Consulting Ayurvedic Knowledge Base...</span>
+                      <Loader2 className="w-5 h-5 animate-spin text-[#3A5A40]" />
+                      <span className="text-stone-500 text-sm font-medium">Consulting Ayurvedic Knowledge Base...</span>
                     </div>
-                   </div>
+                  </div>
                 </div>
               )}
               <div ref={chatEndRef} />
@@ -705,9 +720,9 @@ export default function HealthcareChat() {
         {/* Input Area */}
         <div className="bg-white border-t border-stone-200 px-4 py-5 pb-6">
           <div className="max-w-4xl mx-auto flex items-end gap-3">
-            
+
             <div className="relative flex-1 group">
-               <input
+              <input
                 ref={inputRef}
                 type="text"
                 value={input}

@@ -13,8 +13,12 @@ from .chains import (
     MentalWellnessChain,
     YogaChain,
     AyushChain,
-    HospitalLocatorChain
+    HospitalLocatorChain,
+    ProfileExtractionChain,
+    HealthAdvisoryChain,
+    MedicalMathChain
 )
+from .evaluation.validator import FactCheckerChain
 from .utils.emergency import HybridEmergencyDetector
 from .utils.youtube_client import search_videos
 
@@ -31,6 +35,13 @@ class HealthcareWorkflow:
         self.fusion_chain = ResponseFusionChain(config.llm)
         self.emergency_detector = HybridEmergencyDetector()
         
+        # Profile Extractor
+        self.profile_extractor = ProfileExtractionChain(config.llm)
+        
+        # New Chains
+        self.advisory_chain = HealthAdvisoryChain(config.llm)
+        self.math_chain = MedicalMathChain(config.llm)
+        self.validator = FactCheckerChain(config.llm)
         # Agents using domain-specific RAG retrievers
         yoga_retriever = config.get_retriever('yoga') or config.rag_retriever
         ayush_retriever = config.get_retriever('ayush') or config.rag_retriever
@@ -46,8 +57,53 @@ class HealthcareWorkflow:
         self.gov_scheme_chain = GovernmentSchemeChain(config.llm, schemes_retriever, config.search_tool)
         self.hospital_chain = HospitalLocatorChain(config.llm, config.search_tool)
 
-    async def run(self, user_input: str, query_for_classification: str) -> Dict[str, Any]:
-        """Execute the workflow with multi-agent orchestration"""
+
+
+    async def run(self, user_input: str, query_for_classification: str, user_profile: Any = None) -> Dict[str, Any]:
+        """Execute the workflow"""
+        
+        # [OPTIMIZATION] Fast Path for Greetings (Saves 2 LLM calls)
+        # Check if it's a simple greeting or casual remark
+        casual_intents = ["hello", "hi", "hey", "namaste", "greetings", "good morning", "good evening", "thank", "thanks"]
+        lower_input = user_input.lower().strip()
+        
+        # Exact match or starts/ends with casual words (simple heuristic)
+        is_casual = lower_input in casual_intents or \
+                   (len(lower_input.split()) < 4 and any(w in lower_input for w in casual_intents))
+                   
+        if is_casual:
+            print(f"⚡ [FAST PATH] Detected casual conversation. Skipping LLM rails.")
+            return await self._execute_single_agent(user_input, "general_conversation", {"reasoning": "Fast path detection"})
+            
+        # Step 0: Profile Extraction (Background)
+        profile_update = None
+        if user_profile:
+            print("📝 [STEP 0/3] Checking for Medical Profile Updates...")
+            profile_update = self.profile_extractor.run(user_input, user_profile)
+            if profile_update:
+                # Update the profile object (User Profile is an SQLAlchemy model object typically, but might need careful handling)
+                import json
+                
+                if profile_update.get("age"): user_profile.age = profile_update["age"]
+                if profile_update.get("gender"): user_profile.gender = profile_update["gender"]
+                
+                # Update JSON lists
+                def update_json_list(current_json, new_items):
+                    current = json.loads(current_json) if current_json else []
+                    if isinstance(new_items, list):
+                        for item in new_items:
+                            if item not in current:
+                                current.append(item)
+                    return json.dumps(current)
+
+                if profile_update.get("new_conditions"):
+                    user_profile.medical_history = update_json_list(user_profile.medical_history, profile_update["new_conditions"])
+                if profile_update.get("new_allergies"):
+                    user_profile.allergies = update_json_list(user_profile.allergies, profile_update["new_allergies"])
+                if profile_update.get("new_medications"):
+                    user_profile.medications = update_json_list(user_profile.medications, profile_update["new_medications"])
+                    
+                print("   ✓ Profile object updated in memory")
         
         # Step 1: Safety check
         print("🛡️  [STEP 1/4] Running Safety Guardrail Check...")
@@ -78,6 +134,23 @@ class HealthcareWorkflow:
             # Single agent execution (legacy path)
             result = await self._execute_single_agent(user_input, primary_intent, classification)
         
+        # Step 4: Validate Medical Advice
+        intent_to_check = result.get("intent")
+        output_content = result.get("output")
+        if intent_to_check in ["symptom_checker", "ayush_support", "health_advisory"] or (isinstance(output_content, str) and "symptom" in output_content.lower()):
+             if isinstance(output_content, str):
+                print("🩺 [STEP 4/4] Validating Medical Advice...")
+                validation = self.validator.validate(user_input, output_content)
+                if not validation.get("is_safe", True):
+                    print(f"   ⚠️ Unsafe content detected: {validation.get('reason')}")
+                    result["output"] = validation.get("revised_response") or "I cannot provide a response to this query due to safety concerns. Please consult a doctor immediately."
+                    result["validation_status"] = "blocked"
+                else:
+                    print("   ✓ Validation passed")
+
+        # Check if workflow updated the profile (pass back to API)
+        result["profile_updated"] = bool(profile_update)
+
         print("   ✓ Workflow execution complete\n")
         return result
     
@@ -101,6 +174,13 @@ class HealthcareWorkflow:
         
         elif intent == "government_scheme_support":
             result["output"] = self.gov_scheme_chain.run(user_input)
+            
+        elif intent == "health_advisory":
+            result["output"] = self.advisory_chain.run(user_input)
+            
+        elif intent == "medical_calculation":
+            math_result = self.math_chain.run(user_input)
+            result["output"] = f"**Calculation Result:** {math_result.get('result')}\n\n**Steps:**\n" + "\n".join([f"- {s}" for s in math_result.get('steps', [])])
             
         elif intent == "mental_wellness_support":
             result["output"] = self.mental_wellness_chain.run(user_input)
@@ -131,6 +211,7 @@ class HealthcareWorkflow:
         else:
             result["output"] = "I couldn't understand your request. Please try rephrasing."
         
+
         return result
     
     async def _execute_multi_agent(self, user_input: str, all_intents: List[Dict], classification: Dict) -> Dict[str, Any]:
@@ -260,18 +341,38 @@ class HealthcareWorkflow:
 
         if is_emergency:
             hospital_query = f"Find nearest emergency hospitals for: {user_input}"
-            result["output"] = {
-                "emergency": True,
-                "message": "⚠️ URGENT: Seek immediate medical attention. Call emergency services (108/112).",
-                "reason": reason or "Critical symptoms detected"
-            }
-            result["hospital_locator"] = self.hospital_chain.run(hospital_query)
+            hospital_list = self.hospital_chain.run(hospital_query)
+            
+            result["output"] = f"""# ⚠️ URGENT MEDICAL OBSERVATION
+**Immediate attention recommended.**
+Reason: {reason or "Critical symptoms detected"}
+
+**Call Emergency Services (108/112)**
+
+### 🏥 Nearby Emergency Facilities
+{hospital_list}
+"""
         else:
             symptom_text = f"Patient has {', '.join(symptom_data.symptoms)} with severity {symptom_data.severity}/10"
-            result["output"] = {"emergency": False, "message": "Based on your symptoms, here are some recommendations:"}
-            # All follow-up recommendations for symptoms will use the RAG system
-            result["ayurveda_recommendations"] = self.ayush_chain.run(f"Provide ayurvedic remedies for: {symptom_text}")
-            result["yoga_recommendations"] = self.yoga_chain.run(f"Suggest yoga for: {symptom_text}")
+            
+            # Run agents in parallel or sequence
+            ayurveda_rec = self.ayush_chain.run(f"Provide ayurvedic remedies for: {symptom_text}")
+            yoga_rec = self.yoga_chain.run(f"Suggest yoga for: {symptom_text}")
+            wellness_rec = self.mental_wellness_chain.run(f"Provide wellness advice for: {symptom_text}")
+            
+            # Store raw results for specific frontend components if needed
+            result["ayurveda_recommendations"] = ayurveda_rec
+            # result["yoga_recommendations"] = yoga_rec # Commented out to avoid duplicate display in frontend (now included in main output)
+            result["general_guidance"] = wellness_rec
+            
+            # Construct unified Markdown Output to ensure visibility
+            unified_output = "Based on your symptoms, here are some recommendations:\n\n"
+            
+            unified_output += f"### 🌿 Ayurveda & Natural Remedies\n{ayurveda_rec}\n\n"
+            unified_output += f"### 🧘 Yoga & Breathing\n{yoga_rec}\n\n"
+            unified_output += f"### 🧠 Mental Wellness & General Advice\n{wellness_rec}\n"
+            
+            result["output"] = unified_output
             
             # Add YouTube videos for Yoga
             try:
@@ -279,7 +380,5 @@ class HealthcareWorkflow:
                 result["yoga_videos"] = videos
             except Exception as e:
                 print(f"⚠️ Failed to fetch YouTube videos: {e}")
-
-            result["general_guidance"] = self.mental_wellness_chain.run(f"Provide wellness advice for: {symptom_text}")
         
         return result

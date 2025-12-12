@@ -46,17 +46,20 @@ class IntentClassifierChain:
     
     def __init__(self, llm):
         self.llm = llm
+        self._cache = {} # Simple in-memory cache
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", """You are an intent classifier for a healthcare system. Analyze user queries and identify ALL relevant domains.
 
 Available categories:
 1. **government_scheme_support**: Questions about government health insurance, schemes, subsidies (Ayushman Bharat, PMJAY, etc.)
 2. **mental_wellness_support**: Mental health concerns, stress, anxiety, depression, emotional well-being
-3. **ayush_support**: Traditional medicine queries (Ayurveda, herbs, home remedies, Unani, Siddha, Homeopathy, herbal treatments)
+3. **ayush_support**: Traditional medicine queries (Ayurveda, Yoga, Unani, Siddha, Homeopathy, herbal treatments)
 4. **yoga_support**: Specific yoga practices, asanas, pranayama exercises
 5. **symptom_checker**: Reporting symptoms, feeling unwell, asking about health conditions
 6. **facility_locator_support**: Finding hospitals, clinics, doctors, PHCs, healthcare facilities nearby
-7. **general_conversation**: Greetings, casual chat, thank you, non-healthcare queries
+7. **health_advisory**: Questions about disease outbreaks, health alerts (heatwave, dengue, covid), pollution updates, or vaccination drives.
+8. **medical_calculation**: Dosage calculations, BMI, drip rates, unit conversions.
+9. **general_conversation**: Greetings, casual chat, thank you, non-healthcare queries
 
 **IMPORTANT**: 
 - For greetings (hi, hello, namaste, hey) or casual chat → general_conversation
@@ -90,8 +93,19 @@ Return JSON:
         self.chain = self.prompt | self.llm | JsonOutputParser()
     
     def run(self, user_input: str) -> Dict[str, Any]:
+        # Check cache
+        if user_input in self._cache:
+            print(f"      ⚡ IntentClassifier: Cache hit for '{user_input[:20]}...'")
+            return self._cache[user_input]
+            
         print(f"      → IntentClassifier: Analyzing query...")
         result = self.chain.invoke({"input": user_input})
+        
+        # Update cache (limit size to 100)
+        if len(self._cache) > 100:
+            self._cache.pop(next(iter(self._cache)))
+        self._cache[user_input] = result
+        
         primary = result.get('primary_intent', 'unknown')
         is_multi = result.get('is_multi_domain', False)
         intents = result.get('all_intents', [])

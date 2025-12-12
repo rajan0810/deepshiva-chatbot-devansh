@@ -31,7 +31,7 @@ export default function VoiceRecorder({ onTranscribed, onError }: Props) {
           fd.append("file", blob, "voice.webm");
 
           const token = localStorage.getItem("token");
-          
+
           const res = await fetch("/api/transcribe", {
             method: "POST",
             headers: {
@@ -53,15 +53,30 @@ export default function VoiceRecorder({ onTranscribed, onError }: Props) {
           const json = await res.json();
           onTranscribed(json.text, json.language);
 
-        } catch (err: any) {
-          onError?.(err?.message || "Upload failed");
+          // 🔊 Auto-play TTS if available
+          if (json.audio_url) {
+            const audio = new Audio(json.audio_url);
+            audio.play().catch((err) =>
+              console.error("Audio playback failed:", err)
+            );
+          }
+        } catch (err: unknown) {
+          if (err instanceof Error) {
+            onError?.(err.message || "Upload failed");
+          } else {
+            onError?.("Upload failed");
+          }
         }
       };
 
       mr.start();
       setRecording(true);
-    } catch (err: any) {
-      onError?.(err?.message || "Microphone not accessible");
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        onError?.(err.message || "Microphone not accessible");
+      } else {
+        onError?.("Microphone not accessible");
+      }
     }
   }
 
@@ -76,11 +91,10 @@ export default function VoiceRecorder({ onTranscribed, onError }: Props) {
   return (
     <button
       onClick={() => (recording ? stopRecording() : startRecording())}
-      className={`p-3.5 rounded-full shadow-lg transition-all duration-300 flex items-center justify-center group ${
-        recording
+      className={`p-3.5 rounded-full shadow-lg transition-all duration-300 flex items-center justify-center group ${recording
           ? "bg-accent text-white ring-4 ring-accent/20 animate-pulse"
           : "bg-white text-primary-light border border-primary-light/20 hover:bg-primary hover:text-white hover:shadow-organic hover:-translate-y-0.5"
-      }`}
+        }`}
       title={recording ? "Stop Recording" : "Speak your query"}
     >
       {recording ? (
