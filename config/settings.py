@@ -27,6 +27,21 @@ class Settings(BaseSettings):
     EMBEDDING_DIMENSION: int = 384  # For all-MiniLM-L6-v2
     BATCH_SIZE: int = 32
     
+    # Vector Store Configuration
+    VECTOR_STORE_TYPE: str = Field(
+        default="chroma",  # Options: "chroma", "pinecone", "qdrant", "weaviate"
+        description="Type of vector store to use"
+    )
+    
+    # Pinecone settings (for cloud deployment)
+    PINECONE_API_KEY: Optional[str] = Field(default=None, description="Pinecone API key")
+    PINECONE_ENVIRONMENT: Optional[str] = Field(default=None, description="Pinecone environment (e.g., us-west1-gcp)")
+    PINECONE_INDEX_NAME: Optional[str] = Field(default="pran-protocol", description="Pinecone index name")
+    
+    # Qdrant settings (alternative cloud option)
+    QDRANT_URL: Optional[str] = Field(default=None, description="Qdrant cloud URL")
+    QDRANT_API_KEY: Optional[str] = Field(default=None, description="Qdrant API key")
+    
     # Chunking settings
     CHUNK_SIZE: int = 512  # tokens
     CHUNK_OVERLAP: int = 50  # tokens

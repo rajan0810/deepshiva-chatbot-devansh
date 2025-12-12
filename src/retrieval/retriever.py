@@ -1,5 +1,4 @@
 from typing import List, Dict, Optional
-from src.vector_store.chroma_manager import ChromaDBManager
 from src.retrieval.reranker import Reranker
 from src.retrieval.query_processor import QueryOptimizer, Gatekeeper, Auditor, Strategist
 from config.settings import settings
@@ -11,7 +10,7 @@ class Retriever:
     """Advanced document retrieval with multi-step agentic pipeline."""
     
     def __init__(self, 
-                 chroma_manager: ChromaDBManager,
+                 vector_store,  # Can be ChromaDBManager or CloudVectorStore
                  use_reranking: bool = None,
                  use_query_optimization: bool = True,
                  use_gatekeeper: bool = False,
@@ -20,18 +19,19 @@ class Retriever:
         Initialize retriever with advanced agentic features.
         
         Args:
-            chroma_manager: ChromaDBManager instance
+            vector_store: Vector store instance (ChromaDBManager or CloudVectorStore)
             use_reranking: Whether to use reranking (default from settings)
             use_query_optimization: Whether to optimize queries before search
             use_gatekeeper: Whether to validate query clarity
             use_strategist: Whether to use intelligent strategy selection
         """
-        self.chroma_manager = chroma_manager
+        self.vector_store = vector_store
+        self.chroma_manager = vector_store  # Backward compatibility alias
         self.use_reranking = use_reranking if use_reranking is not None else settings.USE_RERANKING
         
         # Initialize advanced agentic components
         # Pass embedding manager into QueryOptimizer for verification to prevent query drift
-        self.query_optimizer = QueryOptimizer(embedding_manager=self.chroma_manager.embedding_manager) if use_query_optimization else None
+        self.query_optimizer = QueryOptimizer(embedding_manager=self.vector_store.embedding_manager) if use_query_optimization else None
         self.gatekeeper = Gatekeeper() if use_gatekeeper else None
         self.auditor = Auditor()
         self.strategist = Strategist() if use_strategist else None

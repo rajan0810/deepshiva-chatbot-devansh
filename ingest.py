@@ -7,7 +7,12 @@ import argparse
 from config.settings import settings
 from src.document_processor.loader import DocumentLoader
 from src.document_processor.chunker import OptimizedChunker
-from src.vector_store.chroma_manager import ChromaDBManager
+
+# Import appropriate vector store based on configuration
+if settings.VECTOR_STORE_TYPE == "chroma":
+    from src.vector_store.chroma_manager import ChromaDBManager as VectorStore
+else:
+    from src.vector_store.cloud_vector_store import CloudVectorStore as VectorStore
 
 # Optional: Google Drive client (only needed for gdrive ingestion)
 try:
@@ -73,22 +78,31 @@ def ingest_local_documents(directory: Path, collection_name: Optional[str] = Non
     chunks = chunker.chunk_documents(documents)
     logger.info(f"Created {len(chunks)} chunks using '{settings.CHUNKING_STRATEGY}' strategy.")
     
-    # 3. Add to vector store (domain-specific or general)
-    chroma_manager = ChromaDBManager(collection_name=collection_name)
-    num_added = chroma_manager.add_documents(chunks)
+    # 3. Add to vector store (uses Pinecone if VECTOR_STORE_TYPE=pinecone)
+    vector_store = VectorStore(collection_name=collection_name)
+    num_added = len(vector_store.add_documents(chunks))
     
     collection_display = collection_name or settings.CHROMA_COLLECTION_NAME
-    logger.info(f"Successfully added {num_added} chunks to ChromaDB collection '{collection_display}'.")
+    store_name = settings.VECTOR_STORE_TYPE.upper()
+    logger.info(f"Successfully added {num_added} chunks to {store_name} collection '{collection_display}'.")
     
     return num_added
 
 def reset_database(collection_name: Optional[str] = None):
-    """Deletes a ChromaDB collection."""
+    """Deletes a vector store collection."""
     collection_display = collection_name or settings.CHROMA_COLLECTION_NAME
-    logger.warning(f"Resetting database by deleting collection '{collection_display}'...")
-    chroma_manager = ChromaDBManager(collection_name=collection_name)
-    chroma_manager.delete_collection()
-    logger.info("Database collection deleted successfully.")
+    store_name = settings.VECTOR_STORE_TYPE.upper()
+    logger.warning(f"Resetting {store_name} collection '{collection_display}'...")
+    
+    # Note: Reset only works for ChromaDB, not cloud stores
+    if settings.VECTOR_STORE_TYPE == "chroma":
+        from src.vector_store.chroma_manager import ChromaDBManager
+        chroma_manager = ChromaDBManager(collection_name=collection_name)
+        chroma_manager.delete_collection()
+        logger.info("Database collection deleted successfully.")
+    else:
+        logger.error(f"Reset not supported for {store_name}. Delete manually from dashboard.")
+        return
 
 def main():
     """Main CLI interface for ingestion."""

@@ -5,8 +5,13 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_community.tools.tavily_search import TavilySearchResults
 from src.retrieval.retriever import Retriever
-from src.vector_store.chroma_manager import ChromaDBManager
 from config.settings import settings
+
+# Import appropriate vector store based on configuration
+if settings.VECTOR_STORE_TYPE == "chroma":
+    from src.vector_store.chroma_manager import ChromaDBManager as VectorStore
+else:
+    from src.vector_store.cloud_vector_store import CloudVectorStore as VectorStore
 
 load_dotenv()
 
@@ -42,19 +47,20 @@ class HealthcareConfig:
         
         # 3. Initialize Domain-Specific RAG Systems
         print("   -> Initializing Domain-Specific RAG Systems...")
+        print(f"   -> Using vector store: {settings.VECTOR_STORE_TYPE.upper()}")
         self.rag_retrievers: Dict[str, Retriever] = {}
-        self.chroma_managers: Dict[str, ChromaDBManager] = {}
+        self.vector_stores: Dict[str, VectorStore] = {}
         
         try:
             # Create retrievers for each domain
             for domain, collection_name in settings.COLLECTION_NAMES.items():
                 try:
-                    chroma_manager = ChromaDBManager(collection_name=collection_name)
-                    self.chroma_managers[domain] = chroma_manager
+                    vector_store = VectorStore(collection_name=collection_name)
+                    self.vector_stores[domain] = vector_store
                     
                     # Create retriever with strategist enabled
                     retriever = Retriever(
-                        chroma_manager, 
+                        vector_store, 
                         use_reranking=True, 
                         use_strategist=True
                     )
@@ -66,10 +72,10 @@ class HealthcareConfig:
             # Fallback to general retriever
             if not self.rag_retrievers:
                 print("   -> Creating fallback general RAG system...")
-                chroma_manager = ChromaDBManager()
-                self.chroma_managers['general'] = chroma_manager
+                vector_store = VectorStore()
+                self.vector_stores['general'] = vector_store
                 self.rag_retrievers['general'] = Retriever(
-                    chroma_manager,
+                    vector_store,
                     use_reranking=True,
                     use_strategist=True
                 )
@@ -82,12 +88,12 @@ class HealthcareConfig:
             print(f"   ⚠️  Could not initialize RAG system: {e}. AYUSH/Yoga agents will have limited capabilities.")
             self.rag_retriever = None
             self.rag_retrievers = {}
-            self.chroma_managers = {}
+            self.vector_stores = {}
     
     def get_retriever(self, domain: str) -> Optional[Retriever]:
         """Get domain-specific retriever, fallback to general if not found"""
         return self.rag_retrievers.get(domain) or self.rag_retrievers.get('general')
     
-    def get_chroma_manager(self, domain: str) -> Optional[ChromaDBManager]:
-        """Get domain-specific ChromaDB manager"""
-        return self.chroma_managers.get(domain) or self.chroma_managers.get('general')
+    def get_vector_store(self, domain: str) -> Optional[VectorStore]:
+        """Get domain-specific vector store"""
+        return self.vector_stores.get(domain) or self.vector_stores.get('general')
