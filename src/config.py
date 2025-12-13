@@ -23,27 +23,51 @@ class HealthcareConfig:
     
     def __init__(self):
         # 1. Load API Keys and Basic Settings
-        openai_api_key = os.getenv("OPENAI_API_KEY")
+        openai_api_key_1 = os.getenv("OPENAI_API_KEY_1") or os.getenv("OPENAI_API_KEY")
+        openai_api_key_2 = os.getenv("OPENAI_API_KEY_2")
         tavily_api_key = os.getenv("TAVILY_API_KEY")
 
-        if not openai_api_key:
-            raise ValueError("OpenAI API key not found. Set OPENAI_API_KEY in .env file.")
+        if not openai_api_key_1:
+            raise ValueError("OpenAI API key not found. Set OPENAI_API_KEY_1 (or OPENAI_API_KEY) in .env file.")
         if not tavily_api_key:
             raise ValueError("Tavily API key not found. Set TAVILY_API_KEY in .env file.")
         
-        # 2. Initialize LLM and Web Search Tool
-        print("   -> Initializing LLM and Web Search...")
-        self.llm = ChatOpenAI(
+        # 2. Initialize LLMs (split across 2 keys for rate limit management) and Web Search Tool
+        print("   -> Initializing LLMs and Web Search...")
+        
+        # LLM 1: Critical path (guardrail, symptom checker, validator) - HIGH FREQUENCY
+        self.llm_primary = ChatOpenAI(
             model="gpt-4o-mini",
             temperature=0.3,
-            api_key=openai_api_key,
-            max_tokens=800
+            api_key=openai_api_key_1,
+            max_tokens=1200,  # Increased for faster generation
+            request_timeout=20  # 20s timeout
         )
+        print(f"   ✓ Primary LLM (Key 1) ready")
+        
+        # LLM 2: Specialized chains (yoga, ayush, mental, advisory, etc.) - LOWER FREQUENCY
+        if openai_api_key_2:
+            self.llm_secondary = ChatOpenAI(
+                model="gpt-4o-mini",
+                temperature=0.3,
+                api_key=openai_api_key_2,
+                max_tokens=1200,  # Increased for faster generation
+                request_timeout=20  # 20s timeout
+            )
+            print(f"   ✓ Secondary LLM (Key 2) ready")
+        else:
+            # Fallback to same key if only one provided
+            self.llm_secondary = self.llm_primary
+            print(f"   ⚠️ Only one API key provided, using same for both LLMs")
+        
+        # Backwards compatibility
+        self.llm = self.llm_primary
+        
         self.search_tool = TavilySearchResults(
             api_key=tavily_api_key,
             max_results=3
         )
-        print("   ✓ LLM and Web Search ready.")
+        print("   ✓ Web Search ready.")
         
         # 3. Initialize Domain-Specific RAG Systems
         print("   -> Initializing Domain-Specific RAG Systems...")
@@ -72,11 +96,12 @@ class HealthcareConfig:
                     )
                     self.vector_stores[domain] = vector_store
                     
-                    # Create retriever with shared reranker
+                    # Create retriever with shared reranker and query optimization
                     retriever = Retriever(
                         vector_store, 
                         use_reranking=True, 
-                        use_strategist=True,
+                        use_query_optimization=True,  # Enabled: cached to run only once
+                        use_strategist=False,  # Disabled: not needed with good retrievers
                         shared_reranker=shared_reranker
                     )
                     self.rag_retrievers[domain] = retriever
@@ -92,7 +117,8 @@ class HealthcareConfig:
                 self.rag_retrievers['general'] = Retriever(
                     vector_store,
                     use_reranking=True,
-                    use_strategist=True,
+                    use_query_optimization=True,  # Enabled: cached
+                    use_strategist=False,  # Disabled for speed
                     shared_reranker=shared_reranker
                 )
             

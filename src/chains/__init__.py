@@ -2,7 +2,7 @@
 Chain package initialization
 """
 
-from .base_chains import GuardrailChain, IntentClassifierChain, SymptomCheckerChain, ResponseFusionChain
+from .base_chains import GuardrailAndIntentChain, GuardrailChain, IntentClassifierChain, SymptomCheckerChain, ResponseFusionChain
 from .specialized_chains import (
     GovernmentSchemeChain,
     MentalWellnessChain,
@@ -15,6 +15,7 @@ from .health_advisory_chain import HealthAdvisoryChain
 from .medical_reasoning_chain import MedicalMathChain
 
 __all__ = [
+    'GuardrailAndIntentChain',
     'GuardrailChain',
     'IntentClassifierChain',
     'SymptomCheckerChain',

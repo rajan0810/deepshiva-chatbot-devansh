@@ -5,6 +5,7 @@ import asyncio
 from typing import Dict, Any, List
 from .config import HealthcareConfig
 from .chains import (
+    GuardrailAndIntentChain,
     GuardrailChain,
     IntentClassifierChain,
     SymptomCheckerChain,
@@ -28,63 +29,45 @@ class HealthcareWorkflow:
     def __init__(self, config: HealthcareConfig):
         self.config = config
         
-        # Query optimization cache (per-request)
-        self._query_optimization_cache = {}
+        # === KEY 1 (PRIMARY): Critical path - high frequency, runs on every request ===
+        print("   -> Initializing critical chains (Key 1)...")
+        self.guardrail_and_intent = GuardrailAndIntentChain(config.llm_primary)  # Every request
+        self.symptom_chain = SymptomCheckerChain(config.llm_primary)  # Common, complex
+        self.validator = FactCheckerChain(config.llm_primary)  # Runs on all medical responses
         
-        # Initialize core chains
-        self.guardrail = GuardrailChain(config.llm)
-        self.classifier = IntentClassifierChain(config.llm)
-        self.symptom_chain = SymptomCheckerChain(config.llm)
-        self.fusion_chain = ResponseFusionChain(config.llm)
+        # === KEY 2 (SECONDARY): Specialized chains - lower frequency ===
+        print("   -> Initializing specialized chains (Key 2)...")
+        self.fusion_chain = ResponseFusionChain(config.llm_secondary)
+        self.profile_extractor = ProfileExtractionChain(config.llm_secondary)
+        self.advisory_chain = HealthAdvisoryChain(config.llm_secondary)
+        self.math_chain = MedicalMathChain(config.llm_secondary)
+        
         self.emergency_detector = HybridEmergencyDetector()
         
-        # Profile Extractor
-        self.profile_extractor = ProfileExtractionChain(config.llm)
-        
-        # New Chains
-        self.advisory_chain = HealthAdvisoryChain(config.llm)
-        self.math_chain = MedicalMathChain(config.llm)
-        self.validator = FactCheckerChain(config.llm)
-        # Agents using domain-specific RAG retrievers
+        # Agents using domain-specific RAG retrievers (all on Key 2)
         yoga_retriever = config.get_retriever('yoga') or config.rag_retriever
         ayush_retriever = config.get_retriever('ayush') or config.rag_retriever
         schemes_retriever = config.get_retriever('government_schemes') or config.rag_retriever
         mental_wellness_retriever = config.get_retriever('mental_wellness') or config.rag_retriever
         
-        # Inject shared cache into retrievers to prevent duplicate optimizations
-        for retriever in [yoga_retriever, ayush_retriever, schemes_retriever, mental_wellness_retriever]:
-            if retriever:
-                retriever._query_cache = self._query_optimization_cache
+        # RAG-only agents (no web search for medical advice) - Key 2
+        self.ayush_chain = AyushChain(config.llm_secondary, ayush_retriever)
+        self.yoga_chain = YogaChain(config.llm_secondary, yoga_retriever)
+        self.mental_wellness_chain = MentalWellnessChain(config.llm_secondary, mental_wellness_retriever)
         
-        # RAG-only agents (no web search for medical advice)
-        self.ayush_chain = AyushChain(config.llm, ayush_retriever)
-        self.yoga_chain = YogaChain(config.llm, yoga_retriever)
-        self.mental_wellness_chain = MentalWellnessChain(config.llm, mental_wellness_retriever)
+        # Agents that can use web search - Key 2
+        self.gov_scheme_chain = GovernmentSchemeChain(config.llm_secondary, schemes_retriever, config.search_tool)
+        self.hospital_chain = HospitalLocatorChain(config.llm_secondary, config.search_tool)
         
-        # Agents that can use web search
-        self.gov_scheme_chain = GovernmentSchemeChain(config.llm, schemes_retriever, config.search_tool)
-        self.hospital_chain = HospitalLocatorChain(config.llm, config.search_tool)
+        print("   ✓ All chains initialized with load-balanced API keys")
 
 
 
     async def run(self, user_input: str, query_for_classification: str, user_profile: Any = None) -> Dict[str, Any]:
         """Execute the workflow"""
         
-        # Clear query optimization cache for new request
-        self._query_optimization_cache.clear()
-        
-        # [OPTIMIZATION] Fast Path for Greetings (Saves 2 LLM calls)
-        # Check if it's a simple greeting or casual remark
-        casual_intents = ["hello", "hi", "hey", "namaste", "greetings", "good morning", "good evening", "thank", "thanks"]
-        lower_input = user_input.lower().strip()
-        
-        # Exact match or starts/ends with casual words (simple heuristic)
-        is_casual = lower_input in casual_intents or \
-                   (len(lower_input.split()) < 4 and any(w in lower_input for w in casual_intents))
-                   
-        if is_casual:
-            print(f"⚡ [FAST PATH] Detected casual conversation. Skipping LLM rails.")
-            return await self._execute_single_agent(user_input, "general_conversation", {"reasoning": "Fast path detection"})
+        # Create request-local cache to avoid concurrency issues
+        query_optimization_cache = {}
             
         # Step 0: Profile Extraction (Background)
         profile_update = None
@@ -116,19 +99,19 @@ class HealthcareWorkflow:
                     
                 print("   ✓ Profile object updated in memory")
         
-        # Step 1: Safety check
-        print("🛡️  [STEP 1/4] Running Safety Guardrail Check...")
-        safety_check = self.guardrail.check(query_for_classification)
-        if not safety_check.get("is_safe", True):
-            return {"status": "blocked", "reason": safety_check.get("reason")}
-        print("   ✓ Content is safe\n")
+        # Step 1 & 2 MERGED: Safety check + Intent classification (1 API call)
+        print("🛡️🎯 [STEP 1-2/4] Safety Check & Intent Classification (merged)...")
+        combined_result = self.guardrail_and_intent.check_and_classify(query_for_classification)
         
-        # Step 2: Classify intent (now returns multiple intents)
-        print("🎯 [STEP 2/4] Classifying Intent...")
-        classification = self.classifier.run(query_for_classification)
-        primary_intent = classification.get("primary_intent")
-        all_intents = classification.get("all_intents", [])
-        is_multi_domain = classification.get("is_multi_domain", False)
+        # Extract safety result
+        if not combined_result.get("is_safe", True):
+            return {"status": "blocked", "reason": combined_result.get("safety_reason")}
+        print("   ✓ Content is safe")
+        
+        # Extract intent classification
+        primary_intent = combined_result.get("primary_intent")
+        all_intents = combined_result.get("all_intents", [])
+        is_multi_domain = combined_result.get("is_multi_domain", False)
         
         print(f"   → Primary Intent: {primary_intent}")
         if is_multi_domain:
@@ -137,28 +120,37 @@ class HealthcareWorkflow:
                 print(f"      - {intent_obj['intent']} (confidence: {intent_obj['confidence']:.2f})")
         print()
         
-        # Step 3: Pre-optimize query once for all agents (cache it)
-        self._preoptimize_query(user_input)
+        # Step 3: Pre-optimize query once for all agents (use request-local cache)
+        query_cache = {}
+        self._preoptimize_query(user_input, query_cache)
         
         # Step 4: Execute agent(s)
         if is_multi_domain and len(all_intents) > 1:
             # Multi-agent execution with fusion
-            result = await self._execute_multi_agent(user_input, all_intents, classification)
+            result = await self._execute_multi_agent(user_input, all_intents, combined_result, query_cache)
         else:
             # Single agent execution (legacy path)
-            result = await self._execute_single_agent(user_input, primary_intent, classification)
+            result = await self._execute_single_agent(user_input, primary_intent, combined_result, query_cache)
         
-        # Step 5: Validate Medical Advice
+        # Step 5: Validate Medical Advice (skip for non-medical intents to save time)
         intent_to_check = result.get("intent")
         output_content = result.get("output")
-        if intent_to_check in ["symptom_checker", "ayush_support", "health_advisory"] or (isinstance(output_content, str) and "symptom" in output_content.lower()):
+        skip_validation_intents = ["general_conversation", "government_scheme_support", "facility_locator_support", "medical_calculation"]
+        
+        if intent_to_check not in skip_validation_intents and intent_to_check in ["symptom_checker", "ayush_support", "health_advisory", "mental_wellness_support", "yoga_support"]:
              if isinstance(output_content, str):
                 print("🩺 [STEP 5/5] Validating Medical Advice...")
                 validation = self.validator.validate(user_input, output_content)
                 if not validation.get("is_safe", True):
-                    print(f"   ⚠️ Unsafe content detected: {validation.get('reason')}")
+                    # CRITICAL safety issue - block completely
+                    print(f"   🚫 BLOCKED - Critical safety issue: {validation.get('reason')}")
                     result["output"] = validation.get("revised_response") or "I cannot provide a response to this query due to safety concerns. Please consult a doctor immediately."
                     result["validation_status"] = "blocked"
+                elif validation.get("revised_response"):
+                    # Safe but needs additional disclaimer/warning
+                    print(f"   ⚠️ Adding safety disclaimer")
+                    result["output"] = output_content + "\n\n⚠️ **Safety Note:** " + validation.get("revised_response")
+                    result["validation_status"] = "safe_with_disclaimer"
                 else:
                     print("   ✓ Validation passed")
 
@@ -168,9 +160,9 @@ class HealthcareWorkflow:
         print("   ✓ Workflow execution complete\n")
         return result
     
-    def _preoptimize_query(self, query: str) -> None:
+    def _preoptimize_query(self, query: str, query_cache: Dict) -> None:
         """Pre-optimize query once and cache it for all retrievers to use."""
-        if query in self._query_optimization_cache:
+        if query in query_cache:
             return  # Already optimized
         
         # Access any retriever's query optimizer (they all share the same LLM)
@@ -179,18 +171,28 @@ class HealthcareWorkflow:
             optimizer = retriever.query_optimizer
             if optimizer.enabled:
                 optimized = optimizer.optimize_query(query)
-                self._query_optimization_cache[query] = optimized
+                query_cache[query] = optimized
                 if optimized != query:
                     print(f"💾 [CACHE] Query optimized and cached: '{query}' -> '{optimized}'")
                 else:
                     print(f"💾 [CACHE] Query cached as-is (no optimization needed): '{query}'")
     
-    def get_optimized_query(self, query: str) -> str:
+    def get_optimized_query(self, query: str, query_cache: Dict) -> str:
         """Get cached optimized query if available."""
-        return self._query_optimization_cache.get(query, query)
+        return query_cache.get(query, query)
     
-    async def _execute_single_agent(self, user_input: str, intent: str, classification: Dict) -> Dict[str, Any]:
+    async def _execute_single_agent(self, user_input: str, intent: str, classification: Dict, query_cache: Dict = None) -> Dict[str, Any]:
         """Execute a single agent (legacy behavior)"""
+        if query_cache is None:
+            query_cache = {}
+            
+        # PRE-OPTIMIZE query ONCE
+        self._preoptimize_query(user_input, query_cache)
+        
+        # Inject cache into all retrievers
+        for retriever in self.config.rag_retrievers.values():
+            retriever._query_cache = query_cache
+            
         print(f"🔗 [STEP 3/4] Executing Single Agent for '{intent}'...\n")
         result = {"intent": intent, "reasoning": classification.get("reasoning"), "output": None, "is_multi_domain": False}
         
@@ -249,10 +251,20 @@ class HealthcareWorkflow:
 
         return result
     
-    async def _execute_multi_agent(self, user_input: str, all_intents: List[Dict], classification: Dict) -> Dict[str, Any]:
+    async def _execute_multi_agent(self, user_input: str, all_intents: List[Dict], classification: Dict, query_cache: Dict = None) -> Dict[str, Any]:
         """Execute multiple agents in parallel and fuse their responses"""
+        if query_cache is None:
+            query_cache = {}
+            
         print(f"🔗 [STEP 3/4] Executing Multi-Agent Orchestration...")
         print(f"   → Running {len(all_intents)} agents in parallel...\n")
+        
+        # PRE-OPTIMIZE query ONCE before launching agents (critical for performance)
+        self._preoptimize_query(user_input, query_cache)
+        
+        # Inject cache into all retrievers so they use the optimized query
+        for retriever in self.config.rag_retrievers.values():
+            retriever._query_cache = query_cache
         
         # Filter intents with confidence > threshold
         CONFIDENCE_THRESHOLD = 0.6
@@ -301,10 +313,16 @@ class HealthcareWorkflow:
         
         print(f"   → Collected {len(agent_responses)} agent responses\n")
         
-        # Step 4: Fuse responses
-        print("🔀 [STEP 4/4] Fusing Agent Responses...\n")
-        if len(agent_responses) > 1:
+        # Step 4: Fuse responses (skip for 2 agents - just concatenate)
+        if len(agent_responses) > 2:
+            # Complex fusion for 3+ agents
+            print("🔀 [STEP 4/4] Fusing Agent Responses...\n")
             fused_output = self.fusion_chain.fuse(user_input, agent_responses)
+        elif len(agent_responses) == 2:
+            # Simple concatenation for 2 agents (saves 3-5 seconds)
+            print("📝 [STEP 4/4] Combining Agent Responses (fast mode)...\n")
+            responses_list = list(agent_responses.items())
+            fused_output = f"**{responses_list[0][0].replace('_', ' ').title()}:**\n\n{responses_list[0][1]}\n\n---\n\n**{responses_list[1][0].replace('_', ' ').title()}:**\n\n{responses_list[1][1]}"
         else:
             # Only one response, use it directly
             fused_output = list(agent_responses.values())[0] if agent_responses else "No response generated."

@@ -9,6 +9,7 @@ import {
   ChevronRight, Youtube, Activity, User, Bell
 } from 'lucide-react';
 import VoiceRecorder from "./VoiceRecorder";
+import { getValidToken, setupTokenRefresh, onAuthChange } from "@/lib/firebase-client";
 import HealthAlertsWidget from "./HealthAlertsWidget";
 
 // --- Types ---
@@ -156,6 +157,8 @@ export default function HealthcareChat() {
   const [isLoading, setIsLoading] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [pendingRequests, setPendingRequests] = useState<Set<string>>(new Set()); // Track sessions with pending requests
+  const [showPendingWarning, setShowPendingWarning] = useState(false);
   const [userProfile, setUserProfile] = useState<{
     email: string;
     display_name?: string;
@@ -174,19 +177,33 @@ export default function HealthcareChat() {
 
   // Refs
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const activeRequestsRef = useRef<Map<string, AbortController>>(new Map()); // Track active requests per session
+  const sessionMessagesRef = useRef<Map<string, Message[]>>(new Map()); // Store messages per session
+  const sessionLoadAbortRef = useRef<AbortController | null>(null);
+  const isLoadingSessionRef = useRef<boolean>(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // --- Effects ---
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      router.push("/login");
-      return;
-    }
-    fetchSessions(token);
-    fetchUserProfile(token);
+    // Setup Firebase auth listener
+    const unsubscribe = onAuthChange(async (user) => {
+      if (!user) {
+        console.log("⚠️ No Firebase user - redirecting to login");
+        router.push("/login");
+        return;
+      }
+      
+      // Get fresh token
+      const token = await getValidToken();
+      if (token) {
+        fetchSessions(token);
+        fetchUserProfile(token);
+      }
+    });
+
+    // Setup automatic token refresh every 50 minutes
+    setupTokenRefresh();
 
     // Auto-collapse sidebar on small screens
     const handleResize = () => {
@@ -196,7 +213,11 @@ export default function HealthcareChat() {
 
     handleResize(); // Initial check
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    
+    return () => {
+      unsubscribe();
+      window.removeEventListener('resize', handleResize);
+    };
   }, [router]);
 
 
@@ -205,10 +226,13 @@ export default function HealthcareChat() {
   }, [messages, isLoading]);
 
   // --- API Functions ---
-  const fetchUserProfile = async (token: string) => {
+  const fetchUserProfile = async (token?: string) => {
+    const validToken = token || await getValidToken();
+    if (!validToken) return;
+    
     try {
       const res = await fetch("/api/profile", {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${validToken}` }
       });
       if (res.ok) {
         const profile = await res.json();
@@ -222,10 +246,13 @@ export default function HealthcareChat() {
     }
   };
 
-  const fetchSessions = async (token: string) => {
+  const fetchSessions = async (token?: string) => {
+    const validToken = token || await getValidToken();
+    if (!validToken) return;
+    
     try {
       const res = await fetch("/api/sessions", {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${validToken}` }
       });
       if (res.ok) {
         const data = await res.json();
@@ -237,15 +264,57 @@ export default function HealthcareChat() {
   };
 
   const loadSession = async (sessionId: string) => {
-    const token = localStorage.getItem("token");
+    const token = await getValidToken();
     if (!token) return;
 
+    // If already on this session, do nothing
+    if (currentSessionId === sessionId) {
+      console.log(`Already on session ${sessionId}, skipping`);
+      return;
+    }
+
+    console.log(`Loading session: ${sessionId}`);
+
+    // Save current session messages before switching
+    if (currentSessionId) {
+      console.log(`Saving messages for session: ${currentSessionId}`);
+      sessionMessagesRef.current.set(currentSessionId, messages);
+    }
+
+    // Prevent concurrent session loads
+    if (isLoadingSessionRef.current) {
+      console.log('Session load already in progress, aborting previous...');
+      // Abort the previous load and continue with this one
+      if (sessionLoadAbortRef.current) {
+        sessionLoadAbortRef.current.abort();
+        sessionLoadAbortRef.current = null;
+      }
+    }
+
+    isLoadingSessionRef.current = true;
+    const previousSessionId = currentSessionId;
     setCurrentSessionId(sessionId);
-    setIsMobileSidebarOpen(false); // Close mobile drawer
+    setIsMobileSidebarOpen(false);
+
+    // Check if session has cached messages (but skip if coming from same session)
+    const cachedMessages = sessionMessagesRef.current.get(sessionId);
+    if (cachedMessages && cachedMessages.length > 0 && previousSessionId !== sessionId) {
+      console.log(`Using cached messages for session: ${sessionId}`);
+      setMessages(cachedMessages);
+      setIsLoading(pendingRequests.has(sessionId));
+      setShowPendingWarning(pendingRequests.has(sessionId));
+      isLoadingSessionRef.current = false;
+      return;
+    }
+
+    console.log(`Fetching history for session: ${sessionId}`);
+    const abortController = new AbortController();
+    sessionLoadAbortRef.current = abortController;
 
     try {
       const res = await fetch(`/api/sessions/${sessionId}/history`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        signal: abortController.signal,
       });
       if (res.ok) {
         const data = await res.json();
@@ -287,14 +356,51 @@ export default function HealthcareChat() {
           }
           return { role: msg.role, content, rawContent: msg.content };
         });
+        console.log(`Loaded ${uiMessages.length} messages for session ${sessionId}`);
+        
+        // Always update - currentSessionId is already set to sessionId at this point
         setMessages(uiMessages);
+        sessionMessagesRef.current.set(sessionId, uiMessages);
+        setIsLoading(pendingRequests.has(sessionId));
+        setShowPendingWarning(pendingRequests.has(sessionId));
+      } else {
+        console.error(`Failed to load session ${sessionId}: ${res.status}`);
       }
-    } catch (err) {
-      console.error("Failed to load history", err);
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        console.error("Failed to load history", err);
+      } else {
+        console.log('Session load aborted');
+      }
+    } finally {
+      isLoadingSessionRef.current = false;
+      if (sessionLoadAbortRef.current === abortController) {
+        sessionLoadAbortRef.current = null;
+      }
+      console.log(`Session load complete for: ${sessionId}`);
     }
   };
 
   const createNewSession = () => {
+    // Save current session messages before creating new one
+    if (currentSessionId) {
+      sessionMessagesRef.current.set(currentSessionId, messages);
+    }
+    
+    // Abort any ongoing session loads
+    if (sessionLoadAbortRef.current) {
+      sessionLoadAbortRef.current.abort();
+      sessionLoadAbortRef.current = null;
+    }
+    
+    // Show warning if there are pending requests
+    const hasPendingRequests = pendingRequests.size > 0;
+    setShowPendingWarning(hasPendingRequests);
+    
+    // Reset loading states for new session
+    setIsLoading(false);
+    isLoadingSessionRef.current = false;
+    
     setMessages([{
       role: 'assistant',
       content: (
@@ -324,11 +430,28 @@ export default function HealthcareChat() {
     setIsLoading(true);
     setInput('');
 
-    // Abort controller
-    const abortController = new AbortController();
-    abortControllerRef.current = abortController;
+    // Clear pending warning when starting new request
+    setShowPendingWarning(false);
 
-    const token = localStorage.getItem("token");
+    // Capture current session ID for this request
+    const requestSessionId = currentSessionId;
+    const requestKey = requestSessionId || 'new';
+
+    // Track pending request for this session
+    const abortController = new AbortController();
+    activeRequestsRef.current.set(requestKey, abortController);
+    setPendingRequests(prev => new Set(prev).add(requestKey));
+
+    const token = await getValidToken();
+    if (!token) {
+      setMessages((prev) => [...prev, {
+        role: 'assistant',
+        content: 'Session expired. Please log in again.',
+        rawContent: 'Session expired.'
+      }]);
+      setIsLoading(false);
+      return;
+    }
 
     try {
       const response = await fetch('/api/chat', {
@@ -339,7 +462,7 @@ export default function HealthcareChat() {
         },
         body: JSON.stringify({
           query: textToSend,
-          session_id: currentSessionId,
+          session_id: requestSessionId,
           generate_audio: generateAudio,
         }),
         signal: abortController.signal,
@@ -349,13 +472,13 @@ export default function HealthcareChat() {
 
       const data = await response.json();
 
+      // Determine final session ID
+      const finalSessionId = data.session_id || requestSessionId;
+
       // Update session ID if new session was created
-      if (data.session_id) {
-        if (!currentSessionId) {
-          // New session created - update state and refresh sessions list
-          setCurrentSessionId(data.session_id);
-          fetchSessions(token!);
-        }
+      if (data.session_id && !requestSessionId) {
+        setCurrentSessionId(data.session_id);
+        fetchSessions(token!);
       }
 
       const assistantMessage: Message = {
@@ -364,24 +487,46 @@ export default function HealthcareChat() {
         rawContent: typeof data.output === 'string' ? data.output : JSON.stringify(data.output),
         audioUrl: data.audio_url
       };
-      setMessages((prev) => [...prev, assistantMessage]);
 
-      if (data.audio_url) {
+      // Update messages in current view OR cache for other session
+      if (currentSessionId === finalSessionId || (!currentSessionId && !requestSessionId)) {
+        setMessages((prev) => [...prev, assistantMessage]);
+      } else {
+        // Response arrived for a different session - cache it
+        const cachedMessages = sessionMessagesRef.current.get(finalSessionId) || [];
+        sessionMessagesRef.current.set(finalSessionId, [...cachedMessages, assistantMessage]);
+        console.log(`Response cached for session ${finalSessionId}`);
+      }
+
+      if (data.audio_url && currentSessionId === finalSessionId) {
         const audio = new Audio(data.audio_url);
         audio.play().catch(console.error);
       }
 
     } catch (error: any) {
       if (error.name !== 'AbortError') {
-        setMessages((prev) => [...prev, {
-          role: 'assistant',
-          content: 'I apologize, but I am having trouble connecting right now. Please try again.',
-          rawContent: 'Error occurred.'
-        }]);
+        // Only show error in current session
+        if (currentSessionId === requestSessionId || (!currentSessionId && !requestSessionId)) {
+          setMessages((prev) => [...prev, {
+            role: 'assistant',
+            content: 'I apologize, but I am having trouble connecting right now. Please try again.',
+            rawContent: 'Error occurred.'
+          }]);
+        }
       }
     } finally {
-      setIsLoading(false);
-      abortControllerRef.current = null;
+      // Clean up pending request tracking
+      activeRequestsRef.current.delete(requestKey);
+      setPendingRequests(prev => {
+        const updated = new Set(prev);
+        updated.delete(requestKey);
+        return updated;
+      });
+
+      // Only clear loading if we're still in the same session
+      if (currentSessionId === requestSessionId || (!currentSessionId && !requestSessionId)) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -405,7 +550,9 @@ export default function HealthcareChat() {
       setIsAudioPlaying(false);
     }
 
-    const token = localStorage.getItem("token");
+    const token = await getValidToken();
+    if (!token) return;
+    
     setIsAudioLoading(index);
 
     try {
@@ -645,6 +792,26 @@ Please provide:
           {/* Optional: You can remove the bg-url if you prefer plain color, or add a subtle pattern */}
 
           <div className="h-full max-w-4xl mx-auto px-4 md:px-8 py-6 overflow-y-auto scrollbar-thin">
+
+            {/* Pending Request Warning */}
+            {showPendingWarning && pendingRequests.size > 0 && (
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-3 text-amber-800 animate-in fade-in duration-300">
+                <Loader2 className="w-5 h-5 animate-spin shrink-0" />
+                <div className="flex-1">
+                  <p className="font-semibold text-sm">Previous Response Still Loading</p>
+                  <p className="text-xs text-amber-700">
+                    {pendingRequests.size} conversation{pendingRequests.size > 1 ? 's' : ''} {pendingRequests.size > 1 ? 'are' : 'is'} still processing. You can navigate freely, and responses will be saved automatically.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowPendingWarning(false)}
+                  className="text-amber-600 hover:text-amber-800 transition-colors"
+                  aria-label="Dismiss warning"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            )}
 
             {/* Empty State */}
             {

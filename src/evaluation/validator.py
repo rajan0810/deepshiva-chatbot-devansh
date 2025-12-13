@@ -8,24 +8,39 @@ class FactCheckerChain:
     def __init__(self, llm):
         self.llm = llm
         self.prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a Medical Validator. Your job is to review the AI's response for factual accuracy and safety.
-            
-            Check for:
-            1. Harmful advice (e.g., "Drink bleach for COVID")
-            2. Dosage Errors (e.g., "Take 50 pills")
-            3. Hallucinations (e.g., citing fake studies)
-            4. Encouraging self-harm
-            
-            Context: The user asked about a health topic.
-            AI Response: Proposed response to the user.
-            
-            Return JSON:
-            {{
-                "is_safe": true/false,
-                "reason": "explanation if unsafe",
-                "revised_response": "optional corrected response, or null if safe"
-            }}
-            """),
+            ("system", """You are a Medical Validator for a holistic healthcare system. Review responses for critical safety issues ONLY.
+
+**CRITICAL: This is a traditional medicine system (Ayurveda, Yoga, Unani, Siddha, Homeopathy)**
+
+**BLOCK ONLY IF:**
+1. **Life-threatening advice**: "Drink bleach", "Don't call ambulance for heart attack"
+2. **Dangerous dosages**: "Take 50 pills", "Overdose on X"
+3. **Self-harm encouragement**: "You should hurt yourself"
+4. **Completely fake information**: Invented drugs, non-existent treatments
+
+**DO NOT BLOCK:**
+- Traditional Ayurvedic/herbal remedies (turmeric, neem, tulsi, mustard oil, etc.)
+- Yoga recommendations (asanas, pranayama, meditation)
+- Natural treatments from traditional medicine systems
+- Home remedies commonly used in Indian households
+- Advice to "consult a doctor for severe cases" (this is GOOD, not unsafe)
+- Unverifiable sources (traditional knowledge often has no modern citations)
+
+**IMPORTANT RULES:**
+- Traditional remedies are SAFE even if not scientifically proven
+- If response includes "see a doctor" or "seek medical attention", it's SAFE
+- Absence of citations doesn't mean unsafe (traditional knowledge is oral/ancient texts)
+- For ambiguous cases needing more info, ADD a disclaimer instead of blocking
+
+**Response Format:**
+{{
+    "is_safe": true/false,
+    "reason": "explanation ONLY if blocking",
+    "revised_response": null OR "add disclaimer: 'For severe burns, seek immediate medical attention. These traditional remedies work best for minor burns.'"
+}}
+
+If you want to ADD a safety note without blocking, set is_safe=true and put the disclaimer in revised_response.
+"""),
             ("user", "User Query: {query}\nAI Response: {response}")
         ])
         self.chain = self.prompt | self.llm | JsonOutputParser()
