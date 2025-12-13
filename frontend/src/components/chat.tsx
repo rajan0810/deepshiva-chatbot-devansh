@@ -6,10 +6,11 @@ import ReactMarkdown from 'react-markdown';
 import {
   Leaf, Send, Sparkles, Loader2, Plus, MessageCircle,
   LogOut, Menu, X, Volume2, Pause, Play, ChevronLeft,
-  ChevronRight, Youtube, Activity, User
+  ChevronRight, Youtube, Activity, User, Bell
 } from 'lucide-react';
 import VoiceRecorder from "./VoiceRecorder";
 import { getValidToken, setupTokenRefresh, onAuthChange } from "@/lib/firebase-client";
+import HealthAlertsWidget from "./HealthAlertsWidget";
 
 // --- Types ---
 type Message = {
@@ -167,6 +168,7 @@ export default function HealthcareChat() {
   // UI State
   const [isSidebarOpen, setIsSidebarOpen] = useState(true); // Desktop default open
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isAlertsOpen, setIsAlertsOpen] = useState(false); // Health Alerts
 
   // Audio State
   const [playingMessageIndex, setPlayingMessageIndex] = useState<number | null>(null);
@@ -586,7 +588,37 @@ export default function HealthcareChat() {
 
   // --- Render ---
   return (
-    <div className="flex h-screen bg-[#FDFCF8] text-stone-800 overflow-hidden font-sans">
+    <div className="flex h-screen bg-[#FDFCF8] text-stone-800 overflow-hidden font-sans relative">
+
+      {/* Health Alerts Widget */}
+      <HealthAlertsWidget
+        isOpen={isAlertsOpen}
+        onClose={() => setIsAlertsOpen(false)}
+        onAskMore={(alert) => {
+          // Construct a rich prompt with full context
+          const contextPrompt = `Tell me more about this health news:
+
+Title: "${alert.title}"
+Source: ${alert.source}
+${alert.description ? `Summary: ${alert.description}` : ''}
+${alert.url !== '#' ? `Article URL: ${alert.url}` : ''}
+
+Please provide:
+1. A detailed explanation of what this means
+2. Who is affected and how serious is it
+3. What precautions should people take
+4. Any relevant medical context`;
+
+          setInput(contextPrompt);
+          // Auto-focus the input field
+          setTimeout(() => {
+            const inputElement = document.querySelector('textarea[placeholder*="Ask about symptoms"]') as HTMLTextAreaElement;
+            if (inputElement) {
+              inputElement.focus();
+            }
+          }, 100);
+        }}
+      />
 
       {/* Mobile Sidebar Overlay */}
       {isMobileSidebarOpen && (
@@ -690,6 +722,7 @@ export default function HealthcareChat() {
       <main className="flex-1 flex flex-col h-full relative w-full">
 
         {/* Top Navbar */}
+        {/* Top Navbar */}
         <header className="bg-white border-b border-stone-200 h-16 flex items-center px-4 justify-between shadow-sm z-10">
           <div className="flex items-center gap-3">
             {/* Sidebar Toggles */}
@@ -716,30 +749,42 @@ export default function HealthcareChat() {
             </div>
           </div>
 
-          {/* User Profile - Right Side */}
-          {userProfile && (
-            <div className="flex items-center gap-2">
-              {userProfile.photo_url ? (
-                <Image
-                  src={userProfile.photo_url}
-                  alt={userProfile.display_name || 'User'}
-                  width={36}
-                  height={36}
-                  className="rounded-full border-2 border-[#3A5A40]/20 shadow-sm"
-                  onError={(e) => {
-                    console.error('Failed to load header avatar:', userProfile.photo_url);
-                  }}
-                />
-              ) : (
-                <div className="w-9 h-9 rounded-full bg-[#3A5A40] flex items-center justify-center text-white text-sm font-bold shadow-sm">
-                  {(userProfile.display_name || userProfile.email).charAt(0).toUpperCase()}
-                </div>
-              )}
-              <span className="hidden sm:block text-sm font-medium text-stone-700">
-                {userProfile.display_name || userProfile.email.split('@')[0]}
-              </span>
-            </div>
-          )}
+          <div className="flex items-center gap-4">
+            {/* Alerts Toggle */}
+            <button
+              onClick={() => setIsAlertsOpen(true)}
+              className="relative p-2 text-stone-500 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
+              title="Health Alerts"
+            >
+              <Bell className="w-5 h-5" />
+              <span className="absolute top-1.5 right-2 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
+            </button>
+
+            {/* User Profile - Right Side */}
+            {userProfile && (
+              <div className="flex items-center gap-2">
+                {userProfile.photo_url ? (
+                  <Image
+                    src={userProfile.photo_url}
+                    alt={userProfile.display_name || 'User'}
+                    width={36}
+                    height={36}
+                    className="rounded-full border-2 border-[#3A5A40]/20 shadow-sm"
+                    onError={(e) => {
+                      console.error('Failed to load header avatar:', userProfile.photo_url);
+                    }}
+                  />
+                ) : (
+                  <div className="w-9 h-9 rounded-full bg-[#3A5A40] flex items-center justify-center text-white text-sm font-bold shadow-sm">
+                    {(userProfile.display_name || userProfile.email).charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <span className="hidden sm:block text-sm font-medium text-stone-700">
+                  {userProfile.display_name || userProfile.email.split('@')[0]}
+                </span>
+              </div>
+            )}
+          </div>
         </header>
 
         {/* Chat Messages Area */}
@@ -769,30 +814,32 @@ export default function HealthcareChat() {
             )}
 
             {/* Empty State */}
-            {messages.length === 0 && !currentSessionId && (
-              <div className="flex flex-col items-center justify-center h-[80%] text-center space-y-6 animate-in fade-in duration-700">
-                <div className="w-24 h-24 bg-[#E0E5D9] rounded-full flex items-center justify-center mb-4 shadow-inner">
-                  <Leaf className="w-12 h-12 text-[#3A5A40]" />
+            {
+              messages.length === 0 && !currentSessionId && (
+                <div className="flex flex-col items-center justify-center h-[80%] text-center space-y-6 animate-in fade-in duration-700">
+                  <div className="w-24 h-24 bg-[#E0E5D9] rounded-full flex items-center justify-center mb-4 shadow-inner">
+                    <Leaf className="w-12 h-12 text-[#3A5A40]" />
+                  </div>
+                  <div>
+                    <h2 className="text-3xl font-serif font-bold text-[#3A5A40] mb-2">Swastha</h2>
+                    <p className="text-stone-500 max-w-md mx-auto">
+                      "Health is not just the absence of disease, but the balance of mind, body, and spirit."
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg w-full mt-8">
+                    {["Remedies for migraine?", "Yoga for back pain", "Pitt dosha diet", "Meditation for sleep"].map((q, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleSubmit(q)}
+                        className="text-sm bg-white border border-stone-200 p-3 rounded-xl hover:border-[#3A5A40] hover:text-[#3A5A40] hover:shadow-md transition-all text-stone-600"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-3xl font-serif font-bold text-[#3A5A40] mb-2">Swastha</h2>
-                  <p className="text-stone-500 max-w-md mx-auto">
-                    "Health is not just the absence of disease, but the balance of mind, body, and spirit."
-                  </p>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg w-full mt-8">
-                  {["Remedies for migraine?", "Yoga for back pain", "Pitt dosha diet", "Meditation for sleep"].map((q, i) => (
-                    <button
-                      key={i}
-                      onClick={() => handleSubmit(q)}
-                      className="text-sm bg-white border border-stone-200 p-3 rounded-xl hover:border-[#3A5A40] hover:text-[#3A5A40] hover:shadow-md transition-all text-stone-600"
-                    >
-                      {q}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+              )
+            }
 
             {/* Message List */}
             <div className="space-y-8 pb-4">
@@ -892,11 +939,11 @@ export default function HealthcareChat() {
               )}
               <div ref={chatEndRef} />
             </div>
-          </div>
-        </div>
+          </div >
+        </div >
 
         {/* Input Area */}
-        <div className="bg-white border-t border-stone-200 px-4 py-5 pb-6">
+        < div className="bg-white border-t border-stone-200 px-4 py-5 pb-6" >
           <div className="max-w-4xl mx-auto flex items-end gap-3">
 
             <div className="relative flex-1 group">
@@ -930,8 +977,8 @@ export default function HealthcareChat() {
           <p className="text-center text-[11px] text-stone-400 mt-3 font-medium">
             Ayurveda supports, it does not replace. In emergencies, seek professional medical help immediately.
           </p>
-        </div>
-      </main>
-    </div>
+        </div >
+      </main >
+    </div >
   );
 }
