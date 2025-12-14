@@ -38,7 +38,7 @@ interface ChatResponse {
   yoga_recommendations?: string;
 }
 
-const formatResponse = (response: ChatResponse): React.ReactNode => {
+const formatResponse = (response: ChatResponse, t: any): React.ReactNode => {
   const { intent, output, yoga_videos, yoga_recommendations } = response;
 
   const renderContent = (content: string | { message: string; emergency?: boolean } | unknown) => {
@@ -72,7 +72,7 @@ const formatResponse = (response: ChatResponse): React.ReactNode => {
           {msgContent.emergency && (
             <div className="mt-3 p-3 bg-red-50 border border-red-100 rounded-lg flex items-start gap-2 text-red-600">
               <Activity className="w-5 h-5 shrink-0 mt-0.5" />
-              <p className="font-semibold text-sm">Emergency Warning: {msgContent.emergency}</p>
+              <p className="font-semibold text-sm">{t('emergencyWarning')} {msgContent.emergency}</p>
             </div>
           )}
         </div>
@@ -100,7 +100,7 @@ const formatResponse = (response: ChatResponse): React.ReactNode => {
         <div className="mt-4 p-5 bg-[#F2E8CF]/30 rounded-xl border border-[#F2E8CF] shadow-sm">
           <h4 className="font-serif text-primary font-bold mb-3 flex items-center gap-2 text-lg">
             <Leaf className="w-5 h-5" />
-            Yoga Recommendations
+            {t('yogaRecommendations')}
           </h4>
           <div className="text-stone-700">
             {renderContent(yoga_recommendations)}
@@ -113,7 +113,7 @@ const formatResponse = (response: ChatResponse): React.ReactNode => {
         <div className="mt-4">
           <h4 className="font-serif text-stone-800 font-bold mb-3 flex items-center gap-2">
             <Youtube className="w-5 h-5 text-red-500" />
-            Curated Videos for You
+            {t('curatedVideos')}
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {yoga_videos.map((video, idx: number) => (
@@ -133,7 +133,7 @@ const formatResponse = (response: ChatResponse): React.ReactNode => {
                     />
                     <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors" />
                     <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded">
-                      Watch
+                      {t('watch')}
                     </div>
                   </div>
                 )}
@@ -253,18 +253,18 @@ export default function HealthcareChat() {
         const profile = await res.json();
         console.log("User profile loaded:", profile);
         setUserProfile(profile);
-        
+
         // Check if profile is incomplete (trigger onboarding)
-        const isAgeMissing = 
-          profile.age === null || 
-          profile.age === undefined || 
-          profile.age === 0 || 
+        const isAgeMissing =
+          profile.age === null ||
+          profile.age === undefined ||
+          profile.age === 0 ||
           profile.age === "0" ||
           profile.age === "";
 
-        const isGenderMissing = 
-          !profile.gender || 
-          profile.gender === "" || 
+        const isGenderMissing =
+          !profile.gender ||
+          profile.gender === "" ||
           profile.gender === "Unknown" ||
           profile.gender === null;
 
@@ -358,12 +358,12 @@ export default function HealthcareChat() {
           if (msg.role === 'assistant') {
             // Assistant messages are stored as full result objects
             if (typeof content === 'object' && content !== null) {
-              content = formatResponse(content);
+              content = formatResponse(content, t);
             } else if (typeof content === 'string') {
               try {
                 // Try parsing if it's a JSON string
                 const parsed = JSON.parse(content);
-                content = formatResponse(parsed);
+                content = formatResponse(parsed, t);
               } catch (e) {
                 // Plain text - render as markdown
                 content = (
@@ -515,7 +515,7 @@ export default function HealthcareChat() {
 
       const assistantMessage: Message = {
         role: 'assistant',
-        content: formatResponse(data),
+        content: formatResponse(data, t),
         rawContent: typeof data.output === 'string' ? data.output : JSON.stringify(data.output),
         audioUrl: data.audio_url
       };
@@ -575,7 +575,7 @@ export default function HealthcareChat() {
       const payload = {
         age: parseInt(data.age) || 0,
         gender: data.gender || "",
-        medical_history: data.existingConditions 
+        medical_history: data.existingConditions
           ? data.existingConditions.split(',').map((s: string) => s.trim()).filter(Boolean)
           : [],
         medications: data.medications
@@ -676,18 +676,14 @@ export default function HealthcareChat() {
         onClose={() => setIsAlertsOpen(false)}
         onAskMore={(alert) => {
           // Construct a rich prompt with full context
-          const contextPrompt = `Tell me more about this health news:
+          const contextPrompt = t('tellMeMoreNews') + `
 
-Title: "${alert.title}"
-Source: ${alert.source}
-${alert.description ? `Summary: ${alert.description}` : ''}
-${alert.url !== '#' ? `Article URL: ${alert.url}` : ''}
-
-Please provide:
-1. A detailed explanation of what this means
-2. Who is affected and how serious is it
-3. What precautions should people take
-4. Any relevant medical context`;
+` + t('newsPrompt', {
+            title: alert.title,
+            source: alert.source,
+            description: alert.description ? alert.description : '',
+            url: alert.url !== '#' ? alert.url : ''
+          });
 
           setInput(contextPrompt);
           // Auto-focus the input field
@@ -879,9 +875,9 @@ Please provide:
               <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-3 text-amber-800 animate-in fade-in duration-300">
                 <Loader2 className="w-5 h-5 animate-spin shrink-0" />
                 <div className="flex-1">
-                  <p className="font-semibold text-sm">Previous Response Still Loading</p>
+                  <p className="font-semibold text-sm">{t('previousResponseLoading')}</p>
                   <p className="text-xs text-amber-700">
-                    {pendingRequests.size} conversation{pendingRequests.size > 1 ? 's' : ''} {pendingRequests.size > 1 ? 'are' : 'is'} still processing. You can navigate freely, and responses will be saved automatically.
+                    {t('conversationsProcessing', { count: pendingRequests.size })}
                   </p>
                 </div>
                 <button
@@ -902,13 +898,13 @@ Please provide:
                     <Leaf className="w-12 h-12 text-[#3A5A40]" />
                   </div>
                   <div>
-                    <h2 className="text-3xl font-serif font-bold text-[#3A5A40] mb-2">Swastha</h2>
+                    <h2 className="text-3xl font-serif font-bold text-[#3A5A40] mb-2">{t('swastha')}</h2>
                     <p className="text-stone-500 max-w-md mx-auto">
-                      "Health is not just the absence of disease, but the balance of mind, body, and spirit."
+                      {t('healthQuote')}
                     </p>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg w-full mt-8">
-                    {["Remedies for migraine?", "Yoga for back pain", "Pitt dosha diet", "Meditation for sleep"].map((q, i) => (
+                    {[t('migraineRemedy'), t('backPainYoga'), t('pittDoshaDiet'), t('sleepMeditation')].map((q, i) => (
                       <button
                         key={i}
                         onClick={() => handleSubmit(q)}
@@ -996,7 +992,7 @@ Please provide:
                             ) : (
                               <Play className="w-3 h-3" />
                             )}
-                            {playingMessageIndex === index && isAudioPlaying ? "Pause Voice" : "Listen"}
+                            {playingMessageIndex === index && isAudioPlaying ? t('pauseVoice') : t('listen')}
                           </button>
                         </div>
                       )}
@@ -1013,7 +1009,7 @@ Please provide:
                     </div>
                     <div className="bg-white p-4 rounded-2xl rounded-tl-none border border-stone-100 shadow-sm flex items-center gap-3">
                       <Loader2 className="w-5 h-5 animate-spin text-[#3A5A40]" />
-                      <span className="text-stone-500 text-sm font-medium">Consulting Ayurvedic Knowledge Base...</span>
+                      <span className="text-stone-500 text-sm font-medium">{t('consultingKnowledgeBase')}</span>
                     </div>
                   </div>
                 </div>
@@ -1035,7 +1031,7 @@ Please provide:
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmit()}
                 className="w-full pl-6 pr-4 py-4 rounded-2xl bg-stone-50 border border-stone-200 focus:outline-none focus:ring-2 focus:ring-[#3A5A40]/20 focus:border-[#3A5A40] text-stone-800 placeholder:text-stone-400 transition-all shadow-inner"
-                placeholder="Ask about symptoms, doshas, or yoga..."
+                placeholder={t('askPlaceholder')}
                 disabled={isLoading}
               />
             </div>
@@ -1056,13 +1052,13 @@ Please provide:
             </div>
           </div>
           <p className="text-center text-[11px] text-stone-400 mt-3 font-medium">
-            Ayurveda supports, it does not replace. In emergencies, seek professional medical help immediately.
+            {t('disclaimer')}
           </p>
         </div >
       </main >
 
       {/* Onboarding Modal */}
-      <OnboardingModal 
+      <OnboardingModal
         isOpen={showOnboarding}
         onClose={() => setShowOnboarding(false)}
         onComplete={handleOnboardingComplete}

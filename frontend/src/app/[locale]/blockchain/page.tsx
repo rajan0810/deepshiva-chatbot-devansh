@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 interface BlockchainStats {
   blockchain_type: string;
@@ -24,6 +25,7 @@ interface AuditLog {
 }
 
 export default function BlockchainAuditPage() {
+  const t = useTranslations('Blockchain');
   const router = useRouter();
   const [stats, setStats] = useState<BlockchainStats | null>(null);
   const [auditTrail, setAuditTrail] = useState<AuditLog[]>([]);
@@ -38,7 +40,7 @@ export default function BlockchainAuditPage() {
   const fetchBlockchainData = async () => {
     try {
       setLoading(true);
-      
+
       // Fetch public stats (no auth needed)
       const statsResponse = await fetch('http://localhost:8000/blockchain/stats');
       if (statsResponse.ok) {
@@ -55,11 +57,11 @@ export default function BlockchainAuditPage() {
             'Authorization': `Bearer ${token}`
           }
         });
-        
+
         if (anonIdResponse.ok) {
           const anonData = await anonIdResponse.json();
           const anonymousId = anonData.anonymous_id;
-          
+
           // Fetch audit trail using the correct anonymous_id
           const auditResponse = await fetch(
             `http://localhost:8000/compliance/audit/${anonymousId}`,
@@ -69,7 +71,7 @@ export default function BlockchainAuditPage() {
               }
             }
           );
-          
+
           if (auditResponse.ok) {
             const auditData = await auditResponse.json();
             setAuditTrail(auditData.audit_trail || []);
@@ -79,7 +81,7 @@ export default function BlockchainAuditPage() {
         }
       }
     } catch (err) {
-      setError('Failed to load blockchain data');
+      setError(t('error'));
       console.error(err);
     } finally {
       setLoading(false);
@@ -92,7 +94,7 @@ export default function BlockchainAuditPage() {
         <div className="max-w-6xl mx-auto">
           <div className="text-center py-20">
             <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading blockchain data...</p>
+            <p className="mt-4 text-gray-600">{t('loading')}</p>
           </div>
         </div>
       </div>
@@ -108,13 +110,13 @@ export default function BlockchainAuditPage() {
             onClick={() => router.push('/')}
             className="mb-4 text-indigo-600 hover:text-indigo-700 flex items-center gap-2"
           >
-            ← Back to Chat
+            {t('backToChat')}
           </button>
           <h1 className="text-4xl font-bold text-gray-800 flex items-center gap-3">
-            🔗 Blockchain Audit Trail
+            🔗 {t('title')}
           </h1>
           <p className="text-gray-600 mt-2">
-            Immutable, tamper-proof medical record audit system
+            {t('subtitle')}
           </p>
         </div>
 
@@ -122,23 +124,21 @@ export default function BlockchainAuditPage() {
         <div className="flex gap-4 mb-6">
           <button
             onClick={() => setActiveTab('stats')}
-            className={`px-6 py-3 rounded-lg font-semibold transition-colors ${
-              activeTab === 'stats'
+            className={`px-6 py-3 rounded-lg font-semibold transition-colors ${activeTab === 'stats'
                 ? 'bg-indigo-600 text-white'
                 : 'bg-white text-gray-700 hover:bg-gray-50'
-            }`}
+              }`}
           >
-            📊 Statistics
+            📊 {t('tabStats')}
           </button>
           <button
             onClick={() => setActiveTab('audit')}
-            className={`px-6 py-3 rounded-lg font-semibold transition-colors ${
-              activeTab === 'audit'
+            className={`px-6 py-3 rounded-lg font-semibold transition-colors ${activeTab === 'audit'
                 ? 'bg-indigo-600 text-white'
                 : 'bg-white text-gray-700 hover:bg-gray-50'
-            }`}
+              }`}
           >
-            📋 My Audit Trail
+            📋 {t('tabAudit')}
           </button>
         </div>
 
@@ -155,40 +155,39 @@ export default function BlockchainAuditPage() {
                   <div className="text-3xl font-bold text-blue-600">
                     {stats.total_blocks}
                   </div>
-                  <div className="text-gray-600 text-sm">Total Blocks</div>
+                  <div className="text-gray-600 text-sm">{t('totalBlocks')}</div>
                 </div>
                 <div className="bg-green-50 p-4 rounded-lg">
                   <div className="text-3xl font-bold text-green-600">
                     {stats.total_audits}
                   </div>
-                  <div className="text-gray-600 text-sm">Total Audits</div>
+                  <div className="text-gray-600 text-sm">{t('totalAudits')}</div>
                 </div>
                 <div className="bg-purple-50 p-4 rounded-lg">
                   <div className="text-3xl font-bold text-purple-600">
                     {stats.unique_users}
                   </div>
-                  <div className="text-gray-600 text-sm">Unique Users</div>
+                  <div className="text-gray-600 text-sm">{t('uniqueUsers')}</div>
                 </div>
               </div>
 
               {/* Chain Integrity */}
-              <div className={`p-4 rounded-lg mb-6 ${
-                stats.chain_integrity 
-                  ? 'bg-green-50 border-2 border-green-200' 
+              <div className={`p-4 rounded-lg mb-6 ${stats.chain_integrity
+                  ? 'bg-green-50 border-2 border-green-200'
                   : 'bg-red-50 border-2 border-red-200'
-              }`}>
+                }`}>
                 <div className="flex items-center gap-2">
                   <span className="text-2xl">
                     {stats.chain_integrity ? '✅' : '❌'}
                   </span>
                   <div>
                     <div className="font-bold text-gray-800">
-                      Chain Integrity: {stats.chain_integrity ? 'VERIFIED' : 'COMPROMISED'}
+                      {t('chainIntegrity')}: {stats.chain_integrity ? t('verified') : t('compromised')}
                     </div>
                     <div className="text-sm text-gray-600">
-                      {stats.chain_integrity 
-                        ? 'No tampering detected. All blocks are valid.'
-                        : 'WARNING: Tampering detected in blockchain!'}
+                      {stats.chain_integrity
+                        ? t('integrityGood')
+                        : t('integrityBad')}
                     </div>
                   </div>
                 </div>
@@ -196,7 +195,7 @@ export default function BlockchainAuditPage() {
 
               {/* Features */}
               <div className="mb-6">
-                <h3 className="font-semibold text-gray-800 mb-3">Features:</h3>
+                <h3 className="font-semibold text-gray-800 mb-3">{t('features')}</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {stats.features.map((feature, index) => (
                     <div key={index} className="flex items-center gap-2 text-gray-700">
@@ -209,7 +208,7 @@ export default function BlockchainAuditPage() {
 
               {/* Actions Breakdown */}
               <div>
-                <h3 className="font-semibold text-gray-800 mb-3">Actions Breakdown:</h3>
+                <h3 className="font-semibold text-gray-800 mb-3">{t('actionsBreakdown')}</h3>
                 <div className="space-y-2">
                   {Object.entries(stats.actions_breakdown).map(([action, count]) => (
                     <div key={action} className="flex items-center gap-3">
@@ -241,20 +240,20 @@ export default function BlockchainAuditPage() {
               <div className="bg-white rounded-xl shadow-lg p-8 text-center">
                 <div className="text-6xl mb-4">🔒</div>
                 <h3 className="text-xl font-semibold text-gray-800 mb-2">
-                  No Audit Records Yet
+                  {t('noRecords')}
                 </h3>
                 <p className="text-gray-600">
-                  Your medical interactions will appear here as you use the AI assistant.
+                  {t('noRecordsDesc')}
                 </p>
               </div>
             ) : (
               <>
                 <div className="bg-indigo-50 border-l-4 border-indigo-600 p-4 rounded">
                   <p className="text-sm text-gray-700">
-                    📊 Showing {auditTrail.length} audit records from your private blockchain
+                    📊 {t('showing', { count: auditTrail.length })}
                   </p>
                 </div>
-                
+
                 {auditTrail.map((log, index) => (
                   <div
                     key={index}
@@ -265,8 +264,8 @@ export default function BlockchainAuditPage() {
                         <div className="flex items-center gap-2 mb-2">
                           <span className="text-2xl">
                             {log.action === 'DIAGNOSIS' ? '🩺' :
-                             log.action === 'DATA_ACCESS' ? '🔍' :
-                             log.action === 'PRESCRIPTION' ? '💊' : '📝'}
+                              log.action === 'DATA_ACCESS' ? '🔍' :
+                                log.action === 'PRESCRIPTION' ? '💊' : '📝'}
                           </span>
                           <h3 className="text-xl font-bold text-gray-800">
                             {log.action}
@@ -277,7 +276,7 @@ export default function BlockchainAuditPage() {
                         </div>
                       </div>
                       <div className="bg-indigo-100 px-3 py-1 rounded-full text-indigo-700 font-semibold text-sm">
-                        Block #{log.block_number}
+                        {t('block')} #{log.block_number}
                       </div>
                     </div>
 
@@ -286,13 +285,13 @@ export default function BlockchainAuditPage() {
                       <div className="my-4 p-4 bg-blue-50 rounded-lg">
                         {log.metadata.message_preview && (
                           <div className="mb-2">
-                            <span className="font-semibold text-gray-700">💬 Message: </span>
+                            <span className="font-semibold text-gray-700">💬 {t('msg')}: </span>
                             <span className="text-gray-800">{log.metadata.message_preview}</span>
                           </div>
                         )}
                         {log.metadata.response_preview && (
                           <div>
-                            <span className="font-semibold text-gray-700">🤖 Response: </span>
+                            <span className="font-semibold text-gray-700">🤖 {t('response')}: </span>
                             <span className="text-gray-800">{log.metadata.response_preview}</span>
                           </div>
                         )}
@@ -302,7 +301,7 @@ export default function BlockchainAuditPage() {
                     <div className="space-y-2 text-sm">
                       <div className="flex gap-2">
                         <span className="font-semibold text-gray-600 w-32">
-                          Block Hash:
+                          {t('blockHash')}:
                         </span>
                         <span className="font-mono text-xs text-gray-800 break-all">
                           {log.block_hash}
@@ -310,7 +309,7 @@ export default function BlockchainAuditPage() {
                       </div>
                       <div className="flex gap-2">
                         <span className="font-semibold text-gray-600 w-32">
-                          Data Hash:
+                          {t('dataHash')}:
                         </span>
                         <span className="font-mono text-xs text-gray-800 break-all">
                           {log.data_hash}
@@ -321,7 +320,7 @@ export default function BlockchainAuditPage() {
                     {log.metadata && Object.keys(log.metadata).length > 0 && (
                       <details className="mt-4">
                         <summary className="cursor-pointer text-indigo-600 hover:text-indigo-700 font-semibold text-sm">
-                          📋 View Full Metadata
+                          📋 {t('viewMetadata')}
                         </summary>
                         <pre className="mt-2 p-3 bg-gray-50 rounded text-xs overflow-auto max-h-60">
                           {JSON.stringify(log.metadata, null, 2)}

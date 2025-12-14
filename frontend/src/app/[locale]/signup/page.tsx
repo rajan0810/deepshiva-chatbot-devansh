@@ -3,8 +3,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Leaf, Lock, Mail, User, Loader2, ArrowRight, CheckCircle2 } from "lucide-react";
+import { useTranslations } from 'next-intl';
 
 export default function SignupPage() {
+    const t = useTranslations('Signup');
     const router = useRouter();
     const [fullName, setFullName] = useState("");
     const [email, setEmail] = useState("");
@@ -19,7 +21,7 @@ export default function SignupPage() {
         setError("");
 
         if (password !== confirmPassword) {
-            setError("Passwords do not match");
+            setError(t('passMismatch'));
             setIsLoading(false);
             return;
         }
@@ -37,7 +39,7 @@ export default function SignupPage() {
 
             if (!res.ok) {
                 const data = await res.json();
-                throw new Error(data.detail || "Signup failed");
+                throw new Error(data.detail || t('failed'));
             }
 
             const data = await res.json();
@@ -47,7 +49,7 @@ export default function SignupPage() {
             if (err instanceof Error) {
                 setError(err.message);
             } else {
-                setError("Signup failed");
+                setError(t('failed'));
             }
         } finally {
             setIsLoading(false);
@@ -67,8 +69,8 @@ export default function SignupPage() {
                     <div className="w-14 h-14 bg-[#3A5A40] rounded-2xl flex items-center justify-center shadow-lg shadow-[#3A5A40]/20 mb-4 rotate-3 hover:rotate-0 transition-transform duration-300">
                         <Leaf className="w-7 h-7 text-[#F2E8CF]" strokeWidth={2} />
                     </div>
-                    <h1 className="text-3xl font-serif font-bold text-stone-800 text-center">Join DeepShiva</h1>
-                    <p className="text-stone-500 mt-2 text-center text-sm">Begin your holistic wellness journey today.</p>
+                    <h1 className="text-3xl font-serif font-bold text-stone-800 text-center">{t('title')}</h1>
+                    <p className="text-stone-500 mt-2 text-center text-sm">{t('subtitle')}</p>
                 </div>
 
                 {/* Signup Card */}
@@ -82,7 +84,7 @@ export default function SignupPage() {
 
                         {/* Full Name */}
                         <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-stone-700 ml-1 uppercase tracking-wider">Full Name</label>
+                            <label className="text-xs font-bold text-stone-700 ml-1 uppercase tracking-wider">{t('fullName')}</label>
                             <div className="relative group">
                                 <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400 group-focus-within:text-[#3A5A40] transition-colors" />
                                 <input
@@ -98,7 +100,7 @@ export default function SignupPage() {
 
                         {/* Email */}
                         <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-stone-700 ml-1 uppercase tracking-wider">Email Address</label>
+                            <label className="text-xs font-bold text-stone-700 ml-1 uppercase tracking-wider">{t('email')}</label>
                             <div className="relative group">
                                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400 group-focus-within:text-[#3A5A40] transition-colors" />
                                 <input
@@ -114,7 +116,7 @@ export default function SignupPage() {
 
                         {/* Password */}
                         <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-stone-700 ml-1 uppercase tracking-wider">Password</label>
+                            <label className="text-xs font-bold text-stone-700 ml-1 uppercase tracking-wider">{t('password')}</label>
                             <div className="relative group">
                                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400 group-focus-within:text-[#3A5A40] transition-colors" />
                                 <input
@@ -130,7 +132,7 @@ export default function SignupPage() {
 
                         {/* Confirm Password */}
                         <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-stone-700 ml-1 uppercase tracking-wider">Confirm Password</label>
+                            <label className="text-xs font-bold text-stone-700 ml-1 uppercase tracking-wider">{t('confirmPassword')}</label>
                             <div className="relative group">
                                 <CheckCircle2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-stone-400 group-focus-within:text-[#3A5A40] transition-colors" />
                                 <input
@@ -153,7 +155,7 @@ export default function SignupPage() {
                                 <Loader2 className="w-5 h-5 animate-spin" />
                             ) : (
                                 <>
-                                    Create Account
+                                    {t('createAccount')}
                                     <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                                 </>
                             )}
@@ -164,9 +166,9 @@ export default function SignupPage() {
                 {/* Footer */}
                 <div className="mt-8 text-center pb-4">
                     <p className="text-stone-500 text-sm">
-                        Already part of our community?{" "}
+                        {t('alreadyMember')}{" "}
                         <Link href="/login" className="text-[#3A5A40] font-bold hover:underline hover:text-[#2F4A33] transition-colors">
-                            Sign in here
+                            {t('signIn')}
                         </Link>
                     </p>
                 </div>
