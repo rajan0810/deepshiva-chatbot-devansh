@@ -158,7 +158,8 @@ class PostgresBlockchain:
             
             # Create new block
             block_number = last_block['block_number'] + 1
-            timestamp = datetime.now().isoformat()
+            timestamp_obj = datetime.now()
+            timestamp = timestamp_obj.isoformat()
             previous_hash = last_block['block_hash']
             
             # Create audit data (use simplified metadata for block data)
@@ -176,14 +177,13 @@ class PostgresBlockchain:
             block_hash, nonce = self._mine_block(block_number, timestamp, previous_hash, data)
             logger.info(f"   ✓ Block mined: {block_hash[:16]}...")
             
-            # Insert block
+            # Insert block - USE THE SAME TIMESTAMP OBJECT
             logger.info(f"💾 Inserting block into database...")
-            logger.info(f"   Parameters: timestamp={type(datetime.now())}, prev_hash={type(previous_hash)}, block_hash={type(block_hash)}, data={type(data)}, nonce={type(nonce)}")
             cursor.execute('''
                 INSERT INTO blocks (timestamp, previous_hash, block_hash, data, nonce)
                 VALUES (%s, %s, %s, %s, %s)
                 RETURNING block_number
-            ''', (datetime.now(), previous_hash, block_hash, data, nonce))
+            ''', (timestamp_obj, previous_hash, block_hash, data, nonce))
             
             new_block_number = cursor.fetchone()['block_number']
             logger.info(f"   ✓ Block inserted: #{new_block_number}")
@@ -261,6 +261,20 @@ class PostgresBlockchain:
         cursor.execute('SELECT * FROM blocks ORDER BY block_number ASC')
         blocks = cursor.fetchall()
         
+        # Empty blockchain is considered valid
+        if len(blocks) == 0:
+            cursor.close()
+            conn.close()
+            logger.info("✅ Empty blockchain - valid")
+            return True
+        
+        # Single block (genesis) is valid
+        if len(blocks) == 1:
+            cursor.close()
+            conn.close()
+            logger.info("✅ Genesis block only - valid")
+            return True
+        
         for i in range(1, len(blocks)):
             current = blocks[i]
             previous = blocks[i-1]
@@ -272,17 +286,22 @@ class PostgresBlockchain:
                 conn.close()
                 return False
             
-            # Verify block hash
+            # Verify block hash - convert timestamp properly
+            timestamp_str = current['timestamp'].isoformat() if hasattr(current['timestamp'], 'isoformat') else str(current['timestamp'])
+            
             calculated_hash = self._calculate_hash(
                 current['block_number'],
-                current['timestamp'].isoformat(),
+                timestamp_str,
                 current['previous_hash'],
                 current['data'],
                 current['nonce']
             )
             
             if calculated_hash != current['block_hash']:
-                logger.error(f"❌ Block {current['block_number']} hash invalid")
+                logger.error(f"❌ Block {current['block_number']} hash mismatch")
+                logger.error(f"   Expected: {current['block_hash']}")
+                logger.error(f"   Calculated: {calculated_hash}")
+                logger.error(f"   Timestamp: {timestamp_str}")
                 cursor.close()
                 conn.close()
                 return False
