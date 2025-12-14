@@ -612,13 +612,16 @@ export default function HealthcareChat() {
 
   // --- Audio Player Logic ---
   const playResponse = async (text: string, index: number) => {
-    if (playingMessageIndex === index && audioRef.current) {
-      if (audioRef.current.paused) {
-        audioRef.current.play();
-        setIsAudioPlaying(true);
-      } else {
-        audioRef.current.pause();
+    if (playingMessageIndex === index) {
+      if (isAudioPlaying) {
+        audioRef.current?.pause();
         setIsAudioPlaying(false);
+      } else {
+        // RESUME logic
+        if (audioRef.current) {
+          audioRef.current.play().catch(console.error);
+          setIsAudioPlaying(true);
+        }
       }
       return;
     }

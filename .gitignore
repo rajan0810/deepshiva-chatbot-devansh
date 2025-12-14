@@ -227,6 +227,7 @@ config/token.json
 
 # BUT ALWAYS COMMIT FIREBASE CONFIG CODE
 !frontend/src/lib/firebase.ts
+!frontend/src/lib/firebase-client.ts
 !src/auth/firebase_auth.py
 
 # Environment files with secrets (but allow examples)

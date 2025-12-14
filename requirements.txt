@@ -46,9 +46,15 @@ pypdf==4.3.1
 unstructured==0.15.9
 unstructured-client==0.25.5
 networkx==3.3
+google-api-python-client>=2.0.0
+google-auth-oauthlib>=1.0.0
+google-auth>=2.0.0
+python-jose[cryptography]==3.3.0
 
 # Encryption & Security
 cryptography==41.0.7
 
 # Blockchain
 psycopg2-binary==2.9.9
+sarvamai
+pydub

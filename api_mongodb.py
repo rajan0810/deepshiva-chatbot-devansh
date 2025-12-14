@@ -22,6 +22,13 @@ from src.database.mongodb_models import UserMongo, SessionMongo, MessageMongo, A
 from src.security.encryption import PHIEncryptionManager
 from src.compliance.disha_compliance import DISHAComplianceManager
 from bson import ObjectId
+from openai import OpenAI
+from sarvamai import SarvamAI
+import base64
+import shutil
+import hashlib
+import wave
+import io
 
 # Initialize blockchain (auto-detect PostgreSQL or SQLite)
 BLOCKCHAIN_DATABASE_URL = os.getenv("BLOCKCHAIN_DATABASE_URL")
@@ -140,8 +147,12 @@ compliance_manager = DISHAComplianceManager(
 logger.info("✅ DISHA Compliance Manager initialized")
 
 # Audio cache directory for TTS
-AUDIO_DIR = os.path.join(os.getcwd(), "audio_cache")
+# Upload directory
+UPLOAD_DIR = "uploads"
+AUDIO_DIR = "audio_cache"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(AUDIO_DIR, exist_ok=True)
+
 logger.info(f"✅ Audio directory ready: {AUDIO_DIR}")
 
 # Pydantic Models
@@ -640,7 +651,244 @@ async def update_user_profile(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+
+# ==================== TTS UTILITIES ====================
+
+def stitch_wavs(wav_bytes_list):
+    """
+    Concatenate multiple WAV byte objects into a single WAV using 'wave' module.
+    More robust than byte manipulation.
+    """
+    if not wav_bytes_list:
+        return b""
+    if len(wav_bytes_list) == 1:
+        return wav_bytes_list[0]
+
+    output = io.BytesIO()
+    
+    try:
+        # Read parameters from first file
+        with wave.open(io.BytesIO(wav_bytes_list[0]), 'rb') as first_wav:
+            params = first_wav.getparams()
+            
+        with wave.open(output, 'wb') as out_wav:
+            out_wav.setparams(params)
+            
+            for i, wav_data in enumerate(wav_bytes_list):
+                 with wave.open(io.BytesIO(wav_data), 'rb') as w:
+                     # Verify params match (simple check)
+                     if w.getparams()[:3] != params[:3]: # channels, sampwidth, framerate
+                         logging.warning(f"⚠️ Chunk {i} has different WAV params! Stitching might sound weird.")
+                     
+                     out_wav.writeframes(w.readframes(w.getnframes()))
+                     
+        return output.getvalue()
+        
+    except Exception as e:
+        logging.error(f"❌ Error stitching WAVs with wave module: {e}")
+        # Fallback to simple concatenation if wave module fails (unlikely)
+        return b"".join(wav_bytes_list)
+
+def chunk_text(text, max_chars=450):
+    """
+    Split text into chunks of max_chars, preserving sentence boundaries where possible.
+    """
+    chunks = []
+    current_chunk = ""
+    
+    # Split by double newlines first (paragraphs)
+    paragraphs = text.replace("\r", "").split("\n")
+    
+    for para in paragraphs:
+        if not para.strip():
+            continue
+            
+        sentences = [s.strip() + "." for s in para.split(".") if s.strip()]
+        if not sentences:
+            sentences = [para] # Fallback if no periods
+            
+        for sentence in sentences:
+            if len(current_chunk) + len(sentence) < max_chars:
+                current_chunk += sentence + " "
+            else:
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                current_chunk = sentence + " "
+                
+                # If single sentence is massive, split it hardly
+                if len(current_chunk) > max_chars:
+                     # This logic can be improved, but strict cutoff is better than failure
+                     while len(current_chunk) > max_chars:
+                         chunks.append(current_chunk[:max_chars])
+                         current_chunk = current_chunk[max_chars:]
+                         
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+        
+    return chunks
+
+# ==================== TTS ENDPOINT (SARVAM AI) ====================
+
+class TTSRequest(BaseModel):
+    text: str
+    language_code: Optional[str] = "en-IN"
+
+@app.post("/tts")
+async def text_to_speech(request: TTSRequest, current_user: dict = Depends(get_current_user)):
+    """
+    Convert text to speech using Sarvam AI with caching and speed control
+    """
+    try:
+        # 1. Caching Mechanism
+        # Normalize text for hash: strip and lower to catch duplicates better
+        normalized_text = request.text.strip().lower()
+        # Include params in hash to differentiate quality settings
+        hash_input = f"{normalized_text}_{request.language_code}_anushka_v2_24k"
+        text_hash = hashlib.md5(hash_input.encode()).hexdigest()
+        cache_filename = f"tts_{text_hash}.wav"
+        cache_path = os.path.join(AUDIO_DIR, cache_filename)
+        
+        # Check if already cached
+        if os.path.exists(cache_path):
+            file_size = os.path.getsize(cache_path)
+            logger.info(f"🔊 Cache hit for TTS: {cache_filename} (Size: {file_size} bytes)")
+            
+            # Additional check: If file is too small, it might be corrupted/failed previous run
+            if file_size > 1000:
+                with open(cache_path, "rb") as f:
+                    audio_content = f.read()
+                    audio_base64 = base64.b64encode(audio_content).decode('utf-8')
+                    return {"audio_url": f"data:audio/wav;base64,{audio_base64}"}
+            else:
+                logger.warning(f"⚠️ Cache file too small ({file_size}b), regenerating: {cache_filename}")
+        else:
+             logger.info(f"🔊 Cache miss for TTS: {cache_filename}")
+        
+        # 2. Force reload env to ensure key is picked up
+        api_key = os.getenv("SARVAM_API_KEY")
+        if not api_key:
+             load_dotenv(override=True)
+             api_key = os.getenv("SARVAM_API_KEY")
+             
+        if not api_key:
+             logger.error("❌ SARVAM_API_KEY not found in env even after reload")
+             raise HTTPException(status_code=500, detail="TTS service not configured (missing key)")
+
+        client = SarvamAI(api_subscription_key=api_key)
+        
+        # 3. Process Text with Chunking
+        text_full = request.text.strip()
+        if not text_full:
+             raise HTTPException(status_code=400, detail="Text is empty")
+
+        # Lower chunk size even more to be safe (400 chars)
+        chunks = chunk_text(text_full, max_chars=400) 
+        logger.info(f"🔊 Generating TTS for {len(text_full)} chars | Split into {len(chunks)} chunks")
+        
+        audio_segments = []
+        
+        for i, chunk in enumerate(chunks):
+            logger.info(f"  • Processing chunk {i+1}/{len(chunks)} ({len(chunk)} chars): {chunk[:30]}...")
+            try:
+                response = client.text_to_speech.convert(
+                    text=chunk,
+                    target_language_code=request.language_code,
+                    speaker="anushka",
+                    pace=0.90,              # Slow and steady
+                    pitch=-0.2,             # Slightly lower for softer tone
+                    loudness=1.0,           # Balanced loudness
+                    speech_sample_rate=24000, # Premium 24kHz quality
+                    enable_preprocessing=True
+                )
+                
+                if hasattr(response, "audios") and response.audios:
+                    b64_data = response.audios[0]
+                    # Verify b64 data
+                    if len(b64_data) < 100:
+                        logger.warning(f"  ⚠️ Chunk {i} returned suspiciously small audio")
+                    
+                    audio_segments.append(base64.b64decode(b64_data))
+                    logger.info(f"  ✅ Chunk {i+1} success")
+                else:
+                    logger.warning(f"  ❌ Chunk {i} failed: No audio in response")
+            except Exception as e:
+                logger.error(f"  ❌ Chunk {i} error: {e}")
+                # Wait a bit between chunks to avoid rate limits?
+                await asyncio.sleep(0.5)
+        
+        if not audio_segments:
+             raise HTTPException(status_code=500, detail="Failed to generate audio for all chunks")
+
+        # 4. Stitch Audio
+        final_audio = stitch_wavs(audio_segments)
+        final_b64 = base64.b64encode(final_audio).decode('utf-8')
+        
+        logger.info(f"🔊 Stitched Audio Size: {len(final_audio)} bytes")
+
+        # 5. Save to Cache
+        try:
+            with open(cache_path, "wb") as f:
+                f.write(final_audio)
+            logger.info(f"💾 Saved stitched TTS to cache: {cache_filename}")
+        except Exception as e:
+            logger.error(f"⚠️ Failed to cache TTS audio: {e}")
+
+        return {
+            "audio_url": f"data:audio/wav;base64,{final_b64}"
+        }
+
+    except Exception as e:
+        logger.error(f"TTS Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== CHAT & SESSION ENDPOINTS ====================
+
+@app.post("/transcribe")
+async def transcribe_audio(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Transcribes uploaded audio file using OpenAI Whisper.
+    Expects 'file' in multipart/form-data.
+    """
+    temp_filename = f"temp_{file.filename}"
+    try:
+        # Save uploaded file temporarily
+        with open(temp_filename, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # Explicitly get API Key with fallbacks
+        api_key = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY_1") or os.getenv("OPENAI_API_KEY_2")
+        
+        if not api_key:
+            # Try reloading dotenv just in case
+            load_dotenv()
+            api_key = os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY_1") or os.getenv("OPENAI_API_KEY_2")
+            
+        if not api_key:
+            logger.error("❌ OPENAI_API_KEY (or variants) not found in environment variables!")
+            raise HTTPException(status_code=500, detail="Server misconfiguration: OPENAI_API_KEY missing.")
+        
+        # Initialize OpenAI client with explicit key
+        client = OpenAI(api_key=api_key)
+        
+        with open(temp_filename, "rb") as audio_file:
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1", 
+                file=audio_file
+            )
+        
+        logger.info(f"✅ Transcription successful: {transcript.text[:30]}...")
+        return {"text": transcript.text, "language": "en"}
+
+    except Exception as e:
+        logger.error(f"❌ Transcription failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+    finally:
+        # Cleanup temp file
+        if os.path.exists(temp_filename):
+            os.remove(temp_filename)
 
 class ChatRequest(BaseModel):
     query: str  # Changed from 'message' to match frontend
