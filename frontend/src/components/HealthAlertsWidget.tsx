@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { AlertCircle, ExternalLink, Activity, X } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 type Alert = {
   title: string;
@@ -21,6 +22,7 @@ interface HealthAlertsWidgetProps {
 export default function HealthAlertsWidget({ isOpen, onClose, onAskMore }: HealthAlertsWidgetProps) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
+  const t = useTranslations('Alerts');
 
   useEffect(() => {
     if (isOpen) {
@@ -56,7 +58,7 @@ export default function HealthAlertsWidget({ isOpen, onClose, onAskMore }: Healt
         <div className="p-5 border-b border-stone-200 flex items-center justify-between bg-red-50/50">
           <div className="flex items-center gap-2 text-red-700">
             <Activity className="w-5 h-5 animate-pulse" />
-            <span className="font-bold font-serif text-lg">Health Sentinel</span>
+            <span className="font-bold font-serif text-lg">{t('sentinel')}</span>
           </div>
           <button
             onClick={onClose}
@@ -71,11 +73,11 @@ export default function HealthAlertsWidget({ isOpen, onClose, onAskMore }: Healt
           {loading ? (
             <div className="flex flex-col items-center justify-center h-40 text-stone-400 space-y-2">
               <Activity className="w-6 h-6 animate-spin" />
-              <span className="text-xs">Scanning health networks...</span>
+              <span className="text-xs">{t('scanning')}</span>
             </div>
           ) : alerts.length === 0 ? (
             <div className="text-center text-stone-500 py-10 px-4">
-              <p className="text-sm">No critical health alerts at the moment. Stay safe!</p>
+              <p className="text-sm">{t('noAlerts')}</p>
             </div>
           ) : (
             alerts.map((alert, idx) => (
@@ -111,7 +113,7 @@ export default function HealthAlertsWidget({ isOpen, onClose, onAskMore }: Healt
                       className="w-full text-xs font-medium text-[#3A5A40] bg-emerald-50 hover:bg-emerald-100 px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5"
                     >
                       <span>💬</span>
-                      <span>Ask More About This</span>
+                      <span>{t('askMore')}</span>
                     </button>
                   </div>
                 </div>
@@ -121,9 +123,9 @@ export default function HealthAlertsWidget({ isOpen, onClose, onAskMore }: Healt
         </div>
 
         <div className="p-4 border-t border-stone-200 bg-stone-50 text-[10px] text-stone-400 text-center">
-          Real-time updates from trusted sources
+          {t('footer')}
         </div>
       </div>
-    </div>
+    </div >
   );
 }

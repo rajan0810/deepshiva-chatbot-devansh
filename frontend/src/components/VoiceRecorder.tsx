@@ -2,6 +2,7 @@
 
 import React, { useRef, useState } from "react";
 import { Mic, Square } from "lucide-react";
+import { useTranslations } from 'next-intl';
 
 type Props = {
   onTranscribed: (text: string, language?: string) => void;
@@ -10,6 +11,7 @@ type Props = {
 
 export default function VoiceRecorder({ onTranscribed, onError }: Props) {
   const [recording, setRecording] = useState(false);
+  const t = useTranslations('Chat');
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
@@ -92,10 +94,10 @@ export default function VoiceRecorder({ onTranscribed, onError }: Props) {
     <button
       onClick={() => (recording ? stopRecording() : startRecording())}
       className={`p-3.5 rounded-full shadow-lg transition-all duration-300 flex items-center justify-center group ${recording
-          ? "bg-accent text-white ring-4 ring-accent/20 animate-pulse"
-          : "bg-white text-primary-light border border-primary-light/20 hover:bg-primary hover:text-white hover:shadow-organic hover:-translate-y-0.5"
+        ? "bg-accent text-white ring-4 ring-accent/20 animate-pulse"
+        : "bg-white text-primary-light border border-primary-light/20 hover:bg-primary hover:text-white hover:shadow-organic hover:-translate-y-0.5"
         }`}
-      title={recording ? "Stop Recording" : "Speak your query"}
+      title={recording ? t('stopRecording') : t('speakQuery')}
     >
       {recording ? (
         <Square className="w-5 h-5 fill-current" />
