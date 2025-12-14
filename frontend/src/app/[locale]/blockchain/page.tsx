@@ -90,11 +90,11 @@ export default function BlockchainAuditPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-8">
+      <div className="min-h-screen bg-[#FDFCF8] p-8">
         <div className="max-w-6xl mx-auto">
           <div className="text-center py-20">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">{t('loading')}</p>
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-4 text-stone-600">{t('loading')}</p>
           </div>
         </div>
       </div>
@@ -102,20 +102,20 @@ export default function BlockchainAuditPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-8">
+    <div className="min-h-screen bg-[#FDFCF8] p-8">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
           <button
             onClick={() => router.push('/')}
-            className="mb-4 text-indigo-600 hover:text-indigo-700 flex items-center gap-2"
+            className="mb-4 text-primary hover:text-primary-dark flex items-center gap-2 font-medium transition-colors"
           >
-            {t('backToChat')}
+            ← {t('backToChat')}
           </button>
-          <h1 className="text-4xl font-bold text-gray-800 flex items-center gap-3">
+          <h1 className="text-4xl font-bold text-stone-800 flex items-center gap-3 font-serif">
             🔗 {t('title')}
           </h1>
-          <p className="text-gray-600 mt-2">
+          <p className="text-stone-600 mt-2">
             {t('subtitle')}
           </p>
         </div>
@@ -124,18 +124,18 @@ export default function BlockchainAuditPage() {
         <div className="flex gap-4 mb-6">
           <button
             onClick={() => setActiveTab('stats')}
-            className={`px-6 py-3 rounded-lg font-semibold transition-colors ${activeTab === 'stats'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-50'
+            className={`px-6 py-3 rounded-xl font-semibold transition-all ${activeTab === 'stats'
+                ? 'bg-primary text-white shadow-lg'
+                : 'bg-white text-stone-700 hover:bg-stone-50 border border-stone-200'
               }`}
           >
             📊 {t('tabStats')}
           </button>
           <button
             onClick={() => setActiveTab('audit')}
-            className={`px-6 py-3 rounded-lg font-semibold transition-colors ${activeTab === 'audit'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-50'
+            className={`px-6 py-3 rounded-xl font-semibold transition-all ${activeTab === 'audit'
+                ? 'bg-primary text-white shadow-lg'
+                : 'bg-white text-stone-700 hover:bg-stone-50 border border-stone-200'
               }`}
           >
             📋 {t('tabAudit')}
@@ -146,33 +146,33 @@ export default function BlockchainAuditPage() {
         {activeTab === 'stats' && stats && (
           <div className="space-y-6">
             {/* Blockchain Info Card */}
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <h2 className="text-2xl font-bold text-gray-800 mb-4">
-                {stats.blockchain_type}
+            <div className="bg-white rounded-xl shadow-organic p-6 border border-stone-100">
+              <h2 className="text-2xl font-bold text-stone-800 mb-4 font-serif">
+                Blockchain Audit System
               </h2>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <div className="text-3xl font-bold text-blue-600">
+                <div className="bg-[#F2E8CF]/30 p-4 rounded-xl border border-[#F2E8CF]">
+                  <div className="text-3xl font-bold text-primary">
                     {stats.total_blocks}
                   </div>
-                  <div className="text-gray-600 text-sm">{t('totalBlocks')}</div>
+                  <div className="text-stone-600 text-sm">{t('totalBlocks')}</div>
                 </div>
-                <div className="bg-green-50 p-4 rounded-lg">
+                <div className="bg-green-50 p-4 rounded-xl border border-green-100">
                   <div className="text-3xl font-bold text-green-600">
                     {stats.total_audits}
                   </div>
-                  <div className="text-gray-600 text-sm">{t('totalAudits')}</div>
+                  <div className="text-stone-600 text-sm">{t('totalAudits')}</div>
                 </div>
-                <div className="bg-purple-50 p-4 rounded-lg">
+                <div className="bg-purple-50 p-4 rounded-xl border border-purple-100">
                   <div className="text-3xl font-bold text-purple-600">
                     {stats.unique_users}
                   </div>
-                  <div className="text-gray-600 text-sm">{t('uniqueUsers')}</div>
+                  <div className="text-stone-600 text-sm">{t('uniqueUsers')}</div>
                 </div>
               </div>
 
               {/* Chain Integrity */}
-              <div className={`p-4 rounded-lg mb-6 ${stats.chain_integrity
+              <div className={`p-4 rounded-xl mb-6 ${stats.chain_integrity
                   ? 'bg-green-50 border-2 border-green-200'
                   : 'bg-red-50 border-2 border-red-200'
                 }`}>
@@ -181,10 +181,10 @@ export default function BlockchainAuditPage() {
                     {stats.chain_integrity ? '✅' : '❌'}
                   </span>
                   <div>
-                    <div className="font-bold text-gray-800">
+                    <div className="font-bold text-stone-800">
                       {t('chainIntegrity')}: {stats.chain_integrity ? t('verified') : t('compromised')}
                     </div>
-                    <div className="text-sm text-gray-600">
+                    <div className="text-sm text-stone-600">
                       {stats.chain_integrity
                         ? t('integrityGood')
                         : t('integrityBad')}
@@ -195,10 +195,10 @@ export default function BlockchainAuditPage() {
 
               {/* Features */}
               <div className="mb-6">
-                <h3 className="font-semibold text-gray-800 mb-3">{t('features')}</h3>
+                <h3 className="font-semibold text-stone-800 mb-3">{t('features')}</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {stats.features.map((feature, index) => (
-                    <div key={index} className="flex items-center gap-2 text-gray-700">
+                    <div key={index} className="flex items-center gap-2 text-stone-700">
                       <span className="text-green-500">✓</span>
                       {feature}
                     </div>
@@ -208,16 +208,16 @@ export default function BlockchainAuditPage() {
 
               {/* Actions Breakdown */}
               <div>
-                <h3 className="font-semibold text-gray-800 mb-3">{t('actionsBreakdown')}</h3>
+                <h3 className="font-semibold text-stone-800 mb-3">{t('actionsBreakdown')}</h3>
                 <div className="space-y-2">
                   {Object.entries(stats.actions_breakdown).map(([action, count]) => (
                     <div key={action} className="flex items-center gap-3">
-                      <div className="w-32 font-mono text-sm text-gray-600">
+                      <div className="w-32 font-mono text-sm text-stone-600">
                         {action}
                       </div>
-                      <div className="flex-1 bg-gray-200 rounded-full h-6">
+                      <div className="flex-1 bg-stone-200 rounded-full h-6">
                         <div
-                          className="bg-indigo-600 h-6 rounded-full flex items-center justify-end pr-2 text-white text-xs font-semibold"
+                          className="bg-primary h-6 rounded-full flex items-center justify-end pr-2 text-white text-xs font-semibold"
                           style={{
                             width: `${(count / stats.total_audits) * 100}%`
                           }}
@@ -237,19 +237,19 @@ export default function BlockchainAuditPage() {
         {activeTab === 'audit' && (
           <div className="space-y-4">
             {auditTrail.length === 0 ? (
-              <div className="bg-white rounded-xl shadow-lg p-8 text-center">
+              <div className="bg-white rounded-xl shadow-organic p-8 text-center border border-stone-100">
                 <div className="text-6xl mb-4">🔒</div>
-                <h3 className="text-xl font-semibold text-gray-800 mb-2">
+                <h3 className="text-xl font-semibold text-stone-800 mb-2">
                   {t('noRecords')}
                 </h3>
-                <p className="text-gray-600">
+                <p className="text-stone-600">
                   {t('noRecordsDesc')}
                 </p>
               </div>
             ) : (
               <>
-                <div className="bg-indigo-50 border-l-4 border-indigo-600 p-4 rounded">
-                  <p className="text-sm text-gray-700">
+                <div className="bg-[#F2E8CF]/30 border-l-4 border-primary p-4 rounded">
+                  <p className="text-sm text-stone-700">
                     📊 {t('showing', { count: auditTrail.length })}
                   </p>
                 </div>
@@ -257,7 +257,7 @@ export default function BlockchainAuditPage() {
                 {auditTrail.map((log, index) => (
                   <div
                     key={index}
-                    className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow"
+                    className="bg-white rounded-xl shadow-organic p-6 hover:shadow-lg transition-shadow border border-stone-100"
                   >
                     <div className="flex items-start justify-between mb-4">
                       <div>
@@ -267,32 +267,32 @@ export default function BlockchainAuditPage() {
                               log.action === 'DATA_ACCESS' ? '🔍' :
                                 log.action === 'PRESCRIPTION' ? '💊' : '📝'}
                           </span>
-                          <h3 className="text-xl font-bold text-gray-800">
+                          <h3 className="text-xl font-bold text-stone-800">
                             {log.action}
                           </h3>
                         </div>
-                        <div className="text-sm text-gray-500">
+                        <div className="text-sm text-stone-500">
                           {new Date(log.timestamp).toLocaleString()}
                         </div>
                       </div>
-                      <div className="bg-indigo-100 px-3 py-1 rounded-full text-indigo-700 font-semibold text-sm">
+                      <div className="bg-primary/10 px-3 py-1 rounded-full text-primary font-semibold text-sm">
                         {t('block')} #{log.block_number}
                       </div>
                     </div>
 
                     {/* Show message content if available */}
                     {log.metadata && (log.metadata.message_preview || log.metadata.response_preview) && (
-                      <div className="my-4 p-4 bg-blue-50 rounded-lg">
+                      <div className="my-4 p-4 bg-[#F2E8CF]/20 rounded-lg border border-[#F2E8CF]">
                         {log.metadata.message_preview && (
                           <div className="mb-2">
-                            <span className="font-semibold text-gray-700">💬 {t('msg')}: </span>
-                            <span className="text-gray-800">{log.metadata.message_preview}</span>
+                            <span className="font-semibold text-stone-700">💬 {t('msg')}: </span>
+                            <span className="text-stone-800">{log.metadata.message_preview}</span>
                           </div>
                         )}
                         {log.metadata.response_preview && (
                           <div>
-                            <span className="font-semibold text-gray-700">🤖 {t('response')}: </span>
-                            <span className="text-gray-800">{log.metadata.response_preview}</span>
+                            <span className="font-semibold text-stone-700">🤖 {t('response')}: </span>
+                            <span className="text-stone-800">{log.metadata.response_preview}</span>
                           </div>
                         )}
                       </div>
@@ -300,18 +300,18 @@ export default function BlockchainAuditPage() {
 
                     <div className="space-y-2 text-sm">
                       <div className="flex gap-2">
-                        <span className="font-semibold text-gray-600 w-32">
+                        <span className="font-semibold text-stone-600 w-32">
                           {t('blockHash')}:
                         </span>
-                        <span className="font-mono text-xs text-gray-800 break-all">
+                        <span className="font-mono text-xs text-stone-800 break-all">
                           {log.block_hash}
                         </span>
                       </div>
                       <div className="flex gap-2">
-                        <span className="font-semibold text-gray-600 w-32">
+                        <span className="font-semibold text-stone-600 w-32">
                           {t('dataHash')}:
                         </span>
-                        <span className="font-mono text-xs text-gray-800 break-all">
+                        <span className="font-mono text-xs text-stone-800 break-all">
                           {log.data_hash}
                         </span>
                       </div>
@@ -319,10 +319,10 @@ export default function BlockchainAuditPage() {
 
                     {log.metadata && Object.keys(log.metadata).length > 0 && (
                       <details className="mt-4">
-                        <summary className="cursor-pointer text-indigo-600 hover:text-indigo-700 font-semibold text-sm">
+                        <summary className="cursor-pointer text-primary hover:text-primary-dark font-semibold text-sm">
                           📋 {t('viewMetadata')}
                         </summary>
-                        <pre className="mt-2 p-3 bg-gray-50 rounded text-xs overflow-auto max-h-60">
+                        <pre className="mt-2 p-3 bg-stone-50 rounded text-xs overflow-auto max-h-60">
                           {JSON.stringify(log.metadata, null, 2)}
                         </pre>
                       </details>
