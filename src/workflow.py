@@ -17,7 +17,9 @@ from .chains import (
     HospitalLocatorChain,
     ProfileExtractionChain,
     HealthAdvisoryChain,
-    MedicalMathChain
+    MedicalMathChain,
+    DocumentQAChain,
+    ConversationalSymptomChecker
 )
 from .evaluation.validator import FactCheckerChain
 from .utils.emergency import HybridEmergencyDetector
@@ -41,6 +43,8 @@ class HealthcareWorkflow:
         self.profile_extractor = ProfileExtractionChain(config.llm_secondary)
         self.advisory_chain = HealthAdvisoryChain(config.llm_secondary)
         self.math_chain = MedicalMathChain(config.llm_secondary)
+        self.document_qa = DocumentQAChain(config.llm_secondary)
+        self.conversational_symptom_checker = ConversationalSymptomChecker(config.llm_secondary)
         
         self.emergency_detector = HybridEmergencyDetector()
         
@@ -63,8 +67,8 @@ class HealthcareWorkflow:
 
 
 
-    async def run(self, user_input: str, query_for_classification: str, user_profile: Any = None) -> Dict[str, Any]:
-        """Execute the workflow"""
+    async def run(self, user_input: str, query_for_classification: str, user_profile: Any = None, conversation_history: str = "") -> Dict[str, Any]:
+        """Execute the workflow with conversational context"""
         
         # Create request-local cache to avoid concurrency issues
         query_optimization_cache = {}
@@ -153,7 +157,7 @@ class HealthcareWorkflow:
             result = await self._execute_multi_agent(user_input, all_intents, combined_result, query_cache)
         else:
             # Single agent execution (legacy path)
-            result = await self._execute_single_agent(user_input, primary_intent, combined_result, query_cache, user_profile)
+            result = await self._execute_single_agent(user_input, primary_intent, combined_result, query_cache, user_profile, conversation_history)
         
         # Step 5: Validate Medical Advice (skip for non-medical intents to save time)
         intent_to_check = result.get("intent")
@@ -204,7 +208,7 @@ class HealthcareWorkflow:
         """Get cached optimized query if available."""
         return query_cache.get(query, query)
     
-    async def _execute_single_agent(self, user_input: str, intent: str, classification: Dict, query_cache: Dict = None, user_profile: Any = None) -> Dict[str, Any]:
+    async def _execute_single_agent(self, user_input: str, intent: str, classification: Dict, query_cache: Dict = None, user_profile: Any = None, conversation_history: str = "") -> Dict[str, Any]:
         """Execute a single agent (legacy behavior)"""
         if query_cache is None:
             query_cache = {}
@@ -232,11 +236,43 @@ class HealthcareWorkflow:
             else:
                 result["output"] = "I'm here to help with your health and wellness needs. You can ask me about yoga, Ayurveda, government health schemes, symptoms, or finding healthcare facilities. How may I assist you?"
         
+        elif intent == "document_query":
+            # Answer questions about uploaded documents
+            doc_context = ""
+            full_text = ""
+            
+            if user_profile:
+                if isinstance(user_profile, dict):
+                    doc_context = user_profile.get("document_context", "")
+                    full_text = user_profile.get("full_documents_text", "")
+                elif hasattr(user_profile, "document_context"):
+                    doc_context = user_profile.document_context or ""
+                    full_text = getattr(user_profile, "full_documents_text", "")
+            
+            # Prefer full text for detailed queries, fall back to summary
+            context_to_use = full_text if full_text else doc_context
+            
+            if not context_to_use or "No documents" in context_to_use or len(context_to_use.strip()) < 10:
+                result["output"] = "I don't see any uploaded medical documents in your profile. Please upload your lab reports or prescriptions using the document upload button, and I'll be happy to help you understand them."
+            else:
+                result["output"] = self.document_qa.run(user_input, context_to_use)
+        
         elif intent == "government_scheme_support":
             result["output"] = self.gov_scheme_chain.run(user_input)
             
         elif intent == "health_advisory":
-            result["output"] = self.advisory_chain.run(user_input)
+            # Add document context for personalized advice
+            query = user_input
+            if user_profile:
+                doc_context = ""
+                if isinstance(user_profile, dict):
+                    doc_context = user_profile.get("document_context", "")
+                elif hasattr(user_profile, "document_context"):
+                    doc_context = user_profile.document_context or ""
+                if doc_context:
+                    query += f"\n\nPatient's Medical Records:{doc_context}"
+            
+            result["output"] = self.advisory_chain.run(query)
             
         elif intent == "medical_calculation":
             math_result = self.math_chain.run(user_input)
@@ -252,7 +288,18 @@ class HealthcareWorkflow:
                 print(f"⚠️ Failed to fetch YouTube videos: {e}")
             
         elif intent == "ayush_support":
-            result["output"] = self.ayush_chain.run(user_input)
+            # Add document context for personalized Ayurvedic advice
+            query = user_input
+            if user_profile:
+                doc_context = ""
+                if isinstance(user_profile, dict):
+                    doc_context = user_profile.get("document_context", "")
+                elif hasattr(user_profile, "document_context"):
+                    doc_context = user_profile.document_context or ""
+                if doc_context:
+                    query += f"\n\nPatient's Medical Records:{doc_context}"
+            
+            result["output"] = self.ayush_chain.run(query)
         
         elif intent == "yoga_support":
             result["output"] = self.yoga_chain.run(user_input)
@@ -263,7 +310,19 @@ class HealthcareWorkflow:
                 print(f"⚠️ Failed to fetch YouTube videos: {e}")
             
         elif intent == "symptom_checker":
-            result.update(await self._handle_symptoms(user_input, user_profile))
+            # Use conversational symptom checker
+            symptom_check_result = self.conversational_symptom_checker.run(
+                query=user_input,
+                conversation_history=conversation_history
+            )
+            
+            if symptom_check_result["needs_followup"]:
+                # Still gathering info - return question
+                result["output"] = symptom_check_result["response"]
+                result["conversational"] = True
+            else:
+                # Assessment complete - proceed with recommendations
+                result.update(await self._handle_symptoms(user_input, user_profile, symptom_check_result))
             
         elif intent == "facility_locator_support":
             result["output"] = self.hospital_chain.run(user_input)
@@ -570,16 +629,49 @@ Provide a comprehensive response that integrates relevant information from all s
             print(f"      ❌ Error in {intent} agent: {e}")
             return None
     
-    async def _handle_symptoms(self, user_input: str, user_profile: Any = None) -> Dict[str, Any]:
+    async def _handle_symptoms(self, user_input: str, user_profile: Any = None, conversational_result: Dict = None) -> Dict[str, Any]:
         """Handle symptom checking with multi-agent follow-up"""
         # 1. Fast Keyword/Regex Check
         is_emergency, reason = self.emergency_detector.check_emergency(user_input)
         
         # 2. LLM Assessment (if not already detected)
         if not is_emergency:
-            symptom_data = self.symptom_chain.run(user_input)
-            is_emergency = symptom_data.is_emergency
-            result = {"symptom_assessment": symptom_data.model_dump()}
+            if conversational_result and conversational_result.get("complete"):
+                # Use conversational result - extract symptoms directly
+                symptom_summary = conversational_result["symptoms"][0] if conversational_result["symptoms"] else user_input
+                # Create a simple symptom data structure without re-running symptom_chain
+                from collections import namedtuple
+                SimpleSymptom = namedtuple('SimpleSymptom', ['symptoms', 'is_emergency', 'severity'])
+                
+                # Extract key symptom words from summary
+                symptom_words = []
+                if "burn" in symptom_summary.lower():
+                    symptom_words.append("burns")
+                if "blister" in symptom_summary.lower():
+                    symptom_words.append("blisters")
+                if "pain" in symptom_summary.lower():
+                    symptom_words.append("pain")
+                
+                # Fallback: use the full summary if no keywords found
+                if not symptom_words:
+                    symptom_words = [symptom_summary]
+                
+                symptom_data = SimpleSymptom(
+                    symptoms=symptom_words,
+                    is_emergency=False,
+                    severity=5  # Default moderate
+                )
+                is_emergency = False
+                result = {"symptom_assessment": {
+                    "symptoms": symptom_words,
+                    "is_emergency": False,
+                    "severity": 5,
+                    "conversational_summary": symptom_summary
+                }}
+            else:
+                symptom_data = self.symptom_chain.run(user_input)
+                is_emergency = symptom_data.is_emergency
+                result = {"symptom_assessment": symptom_data.model_dump()}
         else:
             # Create a dummy symptom data object for consistency if needed, or just proceed
             # For now, we'll just skip the detailed extraction if it's a clear emergency
@@ -599,7 +691,23 @@ Reason: {reason or "Critical symptoms detected"}
 {hospital_list}
 """
         else:
-            symptom_text = f"Patient has {', '.join(symptom_data.symptoms)}"
+            # Use conversational summary if available, otherwise extract from symptom_data
+            if conversational_result and conversational_result.get("complete"):
+                symptom_summary = conversational_result["symptoms"][0] if conversational_result["symptoms"] else "the reported symptoms"
+                symptom_text = f"Patient has {symptom_summary}"
+            else:
+                symptom_text = f"Patient has {', '.join(symptom_data.symptoms)}"
+            
+            # Add document context if available
+            document_context = ""
+            if user_profile:
+                if isinstance(user_profile, dict):
+                    document_context = user_profile.get("document_context", "")
+                elif hasattr(user_profile, "document_context"):
+                    document_context = user_profile.document_context or ""
+            
+            if document_context:
+                symptom_text += f"\n\nPatient's Medical Records Context:{document_context}"
             
             # Run agents in PARALLEL for faster response
             print("      → Running RAG retrieval in parallel (Ayurveda, Yoga, Mental Wellness)...")

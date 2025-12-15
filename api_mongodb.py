@@ -739,9 +739,34 @@ async def text_to_speech(request: TTSRequest, current_user: dict = Depends(get_c
     Convert text to speech using Sarvam AI with caching and speed control
     """
     try:
+        import re
+        
+        # Clean text for TTS (remove all formatting and special characters)
+        text_for_tts = request.text
+        
+        # Remove citations
+        text_for_tts = re.sub(r'\[Source:.*?\]', '', text_for_tts)
+        text_for_tts = re.sub(r'\[\d+\]', '', text_for_tts)
+        text_for_tts = re.sub(r'\[Citation:.*?\]', '', text_for_tts)
+        
+        # Remove markdown formatting
+        text_for_tts = re.sub(r'#{1,6}\s*', '', text_for_tts)  # Headers
+        text_for_tts = re.sub(r'\*\*(.*?)\*\*', r'\1', text_for_tts)  # Bold
+        text_for_tts = re.sub(r'\*(.*?)\*', r'\1', text_for_tts)  # Italic
+        text_for_tts = re.sub(r'`(.*?)`', r'\1', text_for_tts)  # Code
+        text_for_tts = re.sub(r'^\s*[-*+]\s+', '', text_for_tts, flags=re.MULTILINE)  # Lists
+        text_for_tts = re.sub(r'^\s*\d+\.\s+', '', text_for_tts, flags=re.MULTILINE)  # Numbered lists
+        
+        # Remove emojis and special symbols
+        text_for_tts = re.sub(r'[^\w\s,.!?;:()\-\'/"]', '', text_for_tts)
+        
+        # Clean up spacing
+        text_for_tts = re.sub(r'\n+', '. ', text_for_tts)
+        text_for_tts = re.sub(r'\s+', ' ', text_for_tts).strip()
+        
         # 1. Caching Mechanism
         # Normalize text for hash: strip and lower to catch duplicates better
-        normalized_text = request.text.strip().lower()
+        normalized_text = text_for_tts.strip().lower()
         # Include params in hash to differentiate quality settings
         hash_input = f"{normalized_text}_{request.language_code}_anushka_v2_24k"
         text_hash = hashlib.md5(hash_input.encode()).hexdigest()
@@ -776,8 +801,8 @@ async def text_to_speech(request: TTSRequest, current_user: dict = Depends(get_c
 
         client = SarvamAI(api_subscription_key=api_key)
         
-        # 3. Process Text with Chunking
-        text_full = request.text.strip()
+        # 3. Process Text with Chunking (use cleaned text without citations)
+        text_full = text_for_tts.strip()
         if not text_full:
              raise HTTPException(status_code=400, detail="Text is empty")
 
@@ -972,6 +997,49 @@ async def chat(
             decrypted = encryption_manager.decrypt(current_user["allergies_encrypted"], user_salt)
             user_profile_raw["allergies"] = decrypted
         
+        # Fetch recent documents for context
+        document_context = ""
+        full_documents_text = ""  # For detailed document queries
+        try:
+            recent_docs = await mongodb_manager.db.user_documents.find(
+                {"user_id": user_id, "status": "processed"}
+            ).sort("upload_date", -1).limit(5).to_list(length=5)
+            
+            if recent_docs:
+                doc_summaries = []
+                doc_full_texts = []
+                
+                for doc in recent_docs:
+                    analysis = doc.get("analysis", {})
+                    if analysis and analysis.get("analyzed"):
+                        summary = f"📄 {doc['file_name']}"
+                        if analysis.get("summary"):
+                            summary += f": {analysis['summary']}"
+                        if analysis.get("medications"):
+                            summary += f" | Medications: {', '.join(analysis['medications'][:3])}"
+                        if analysis.get("diagnoses"):
+                            summary += f" | Diagnoses: {', '.join(analysis['diagnoses'][:3])}"
+                        doc_summaries.append(summary)
+                        
+                        # Decrypt full text for document queries
+                        if doc.get("full_text_encrypted"):
+                            try:
+                                full_text = encryption_manager.decrypt(doc["full_text_encrypted"], user_salt)
+                                doc_full_texts.append(f"\n--- {doc['file_name']} ---\n{full_text[:2000]}")  # Limit to 2000 chars per doc
+                            except Exception as e:
+                                logger.error(f"Failed to decrypt document text: {e}")
+                
+                if doc_summaries:
+                    document_context = "\n\nRecent Medical Documents:\n" + "\n".join(doc_summaries)
+                
+                if doc_full_texts:
+                    full_documents_text = "\n\n".join(doc_full_texts)
+        except Exception as e:
+            logger.error(f"Failed to fetch document context: {e}")
+        
+        user_profile_raw["document_context"] = document_context
+        user_profile_raw["full_documents_text"] = full_documents_text  # For detailed queries
+        
         # Anonymize user data (DISHA compliance)
         user_email = encryption_manager.decrypt(current_user.get("email_encrypted", ""), user_salt)
         compliance_data = await compliance_manager.process_user_data({
@@ -1045,7 +1113,8 @@ User Profile (Anonymized ID: {anonymous_id}):
         result = await workflow.run(
             user_input=request.query,
             query_for_classification=full_context_query,  # Pass full context
-            user_profile=user_profile_raw  # Pass profile for potential updates
+            user_profile=user_profile_raw,  # Pass profile for potential updates
+            conversation_history=history_context  # Pass conversation history
         )
         
         # Process response with DISHA compliance
@@ -1094,12 +1163,34 @@ User Profile (Anonymized ID: {anonymous_id}):
         if request.generate_audio:
             from openai import OpenAI
             import hashlib
+            import re
             
             client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
             
             # Get text to speak
             raw_output = result.get("output") if isinstance(result, dict) else result
             tts_input = raw_output if isinstance(raw_output, str) else str(raw_output)
+            
+            # Clean text for TTS (but keep in displayed text)
+            # Remove citations
+            tts_input = re.sub(r'\[Source:.*?\]', '', tts_input)
+            tts_input = re.sub(r'\[\d+\]', '', tts_input)
+            tts_input = re.sub(r'\[Citation:.*?\]', '', tts_input)
+            
+            # Remove markdown formatting
+            tts_input = re.sub(r'#{1,6}\s*', '', tts_input)  # Headers (###)
+            tts_input = re.sub(r'\*\*(.*?)\*\*', r'\1', tts_input)  # Bold
+            tts_input = re.sub(r'\*(.*?)\*', r'\1', tts_input)  # Italic
+            tts_input = re.sub(r'`(.*?)`', r'\1', tts_input)  # Inline code
+            tts_input = re.sub(r'^\s*[-*+]\s+', '', tts_input, flags=re.MULTILINE)  # List markers
+            tts_input = re.sub(r'^\s*\d+\.\s+', '', tts_input, flags=re.MULTILINE)  # Numbered lists
+            
+            # Remove emojis (all Unicode emoji characters)
+            tts_input = re.sub(r'[^\w\s,.!?;:()\-\'/"]', '', tts_input)
+            
+            # Clean up multiple spaces and newlines
+            tts_input = re.sub(r'\n+', '. ', tts_input)  # Replace newlines with periods
+            tts_input = re.sub(r'\s+', ' ', tts_input).strip()
             
             # Create cache filename
             text_hash = hashlib.md5(tts_input.encode("utf-8")).hexdigest()
@@ -1348,6 +1439,230 @@ async def transcribe_audio(
         logger.error(f"Transcription error: {e}", exc_info=True)
         if os.path.exists(audio_path):
             os.unlink(audio_path)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== DOCUMENT UPLOAD ENDPOINTS ====================
+
+@app.post("/documents/upload")
+async def upload_medical_document(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Upload and extract medical document (PDF)"""
+    import tempfile
+    from pathlib import Path
+    from src.document_processor.pdf_extractor import MedicalDocumentExtractor
+    
+    # Validate file type
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(
+            status_code=400, 
+            detail="Only PDF files are supported"
+        )
+    
+    try:
+        user_id = current_user["_id"]
+        user_salt = current_user["encryption_key_id"]
+        
+        # Save uploaded file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            content = await file.read()
+            tmp.write(content)
+            tmp_path = Path(tmp.name)
+        
+        # Extract and analyze
+        extractor = MedicalDocumentExtractor(llm=config.llm_secondary)
+        result = extractor.process_medical_pdf(tmp_path)
+        
+        # Determine status - always "processed" if text was extracted
+        # Analysis can fail but document is still uploaded
+        doc_status = "processed"
+        if not result.get("success"):
+            doc_status = "extraction_failed"
+        elif result.get("analysis", {}).get("error"):
+            doc_status = "processed"  # Text extracted, analysis failed (non-critical)
+        
+        # Store in MongoDB
+        document_doc = {
+            "user_id": user_id,
+            "file_name": file.filename,
+            "file_size": len(content),
+            "upload_date": datetime.utcnow(),
+            "extraction": {
+                "num_pages": result.get("num_pages"),
+                "extracted_at": result.get("extracted_at")
+            },
+            "analysis": result.get("analysis", {}),
+            # Encrypt full text
+            "full_text_encrypted": encryption_manager.encrypt(
+                result.get("full_text", ""), 
+                user_salt
+            ) if result.get("full_text") else None,
+            "status": doc_status,
+            "error": result.get("error")
+        }
+        
+        insert_result = await mongodb_manager.db.user_documents.insert_one(document_doc)
+        document_id = str(insert_result.inserted_id)
+        
+        # Cleanup temp file
+        os.unlink(tmp_path)
+        
+        # Build user-friendly message
+        message = "Document uploaded successfully"
+        if result.get("analysis", {}).get("error"):
+            message += " (detailed analysis pending)"
+        
+        logger.info(f"📄 Document uploaded: {file.filename} for user {user_id} - Status: {doc_status}")
+        
+        # Check if document belongs to user and update profile
+        profile_updated = False
+        ownership_status = "unknown"
+        
+        analysis = result.get("analysis", {})
+        if analysis.get("analyzed") and analysis.get("patient_name"):
+            # Get user's display name
+            user_email = encryption_manager.decrypt(current_user.get("email_encrypted", ""), user_salt)
+            user_display_name = current_user.get("display_name", "")
+            
+            # Simple name matching (case insensitive, partial match)
+            patient_name = analysis.get("patient_name", "").lower()
+            
+            # Check if patient name matches user
+            name_match = False
+            if user_display_name:
+                name_parts = user_display_name.lower().split()
+                # Match if any part of display name is in patient name
+                name_match = any(part in patient_name for part in name_parts if len(part) > 2)
+            
+            if name_match:
+                ownership_status = "confirmed_user"
+                # Update user profile with document data
+                try:
+                    import json
+                    update_fields = {}
+                    
+                    # Add new medications
+                    if analysis.get("medications"):
+                        current_meds = current_user.get("medications_encrypted")
+                        if current_meds:
+                            existing = json.loads(encryption_manager.decrypt(current_meds, user_salt))
+                        else:
+                            existing = []
+                        
+                        for med in analysis["medications"]:
+                            if med not in existing:
+                                existing.append(med)
+                        
+                        update_fields["medications_encrypted"] = encryption_manager.encrypt(
+                            json.dumps(existing), user_salt
+                        )
+                    
+                    # Add new diagnoses to medical history
+                    if analysis.get("diagnoses"):
+                        current_history = current_user.get("medical_history_encrypted")
+                        if current_history:
+                            existing = json.loads(encryption_manager.decrypt(current_history, user_salt))
+                        else:
+                            existing = []
+                        
+                        for diagnosis in analysis["diagnoses"]:
+                            if diagnosis not in existing:
+                                existing.append(diagnosis)
+                        
+                        update_fields["medical_history_encrypted"] = encryption_manager.encrypt(
+                            json.dumps(existing), user_salt
+                        )
+                    
+                    # Update user document
+                    if update_fields:
+                        await mongodb_manager.db.users.update_one(
+                            {"_id": user_id},
+                            {"$set": update_fields}
+                        )
+                        profile_updated = True
+                        logger.info(f"✅ Profile updated from document for user {user_id}")
+                        message += " | Profile updated with medications and diagnoses"
+                
+                except Exception as e:
+                    logger.error(f"Failed to update profile from document: {e}")
+            else:
+                ownership_status = "different_patient"
+                logger.info(f"⚠️ Document patient name '{patient_name}' doesn't match user '{user_display_name}'")
+        
+        return {
+            "success": True,
+            "document_id": document_id,
+            "file_name": file.filename,
+            "num_pages": result.get("num_pages"),
+            "analysis": result.get("analysis", {}),
+            "message": message,
+            "profile_updated": profile_updated,
+            "ownership_status": ownership_status
+        }
+        
+    except Exception as e:
+        logger.error(f"Document upload error: {e}", exc_info=True)
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/documents")
+async def get_user_documents(
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all documents for current user"""
+    try:
+        user_id = current_user["_id"]
+        
+        documents = await mongodb_manager.db.user_documents.find(
+            {"user_id": user_id}
+        ).sort("upload_date", -1).to_list(length=50)
+        
+        # Format response (without encrypted content)
+        formatted_docs = []
+        for doc in documents:
+            formatted_docs.append({
+                "id": str(doc["_id"]),
+                "file_name": doc["file_name"],
+                "file_size": doc["file_size"],
+                "upload_date": doc["upload_date"].isoformat(),
+                "num_pages": doc.get("extraction", {}).get("num_pages"),
+                "status": doc.get("status"),
+                "analysis": doc.get("analysis", {})
+            })
+        
+        return {"documents": formatted_docs}
+        
+    except Exception as e:
+        logger.error(f"Error fetching documents: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/documents/{document_id}")
+async def delete_document(
+    document_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete a user's document"""
+    try:
+        user_id = current_user["_id"]
+        
+        result = await mongodb_manager.db.user_documents.delete_one({
+            "_id": ObjectId(document_id),
+            "user_id": user_id
+        })
+        
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        logger.info(f"🗑️ Document deleted: {document_id}")
+        return {"success": True, "message": "Document deleted"}
+        
+    except Exception as e:
+        logger.error(f"Error deleting document: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

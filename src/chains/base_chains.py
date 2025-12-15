@@ -62,17 +62,20 @@ Examples of SAFE queries:
 Use semantic understanding to identify the user's TRUE intent and needs.
 
 Available healthcare domains:
-1. **government_scheme_support**: Financial assistance, insurance, subsidies, government programs
-2. **mental_wellness_support**: Psychological health, emotional wellbeing, stress management
-3. **ayush_support**: Traditional/alternative medicine systems (Ayurveda, herbs, natural remedies)
-4. **yoga_support**: Physical practices, breathing exercises, meditation
-5. **symptom_checker**: Active health concerns requiring assessment or triage
-6. **facility_locator_support**: Finding healthcare providers or facilities
-7. **health_advisory**: Public health information, disease prevention, alerts
-8. **medical_calculation**: Quantitative medical computations
-9. **general_conversation**: Non-medical social interaction
+1. **document_query**: Questions about uploaded medical documents (lab reports, prescriptions, test results)
+2. **government_scheme_support**: Financial assistance, insurance, subsidies, government programs
+3. **mental_wellness_support**: Psychological health, emotional wellbeing, stress management
+4. **ayush_support**: Traditional/alternative medicine systems (Ayurveda, herbs, natural remedies)
+5. **yoga_support**: Physical practices, breathing exercises, meditation
+6. **symptom_checker**: Active health concerns requiring assessment or triage
+7. **facility_locator_support**: Finding healthcare providers or facilities
+8. **health_advisory**: Public health information, disease prevention, alerts
+9. **medical_calculation**: Quantitative medical computations
+10. **general_conversation**: Non-medical social interaction
 
 **Semantic Guidelines**:
+- **document_query** triggers when user asks about SPECIFIC values, results, or details in their medical records
+  Examples: "What was my hemoglobin?", "What did my X-ray show?", "What medications am I on?"
 - Understand the USER'S GOAL, not just keywords
 - Distinguish between: asking about a condition vs. having active symptoms
 - Recognize when someone needs urgent assessment vs. ongoing management

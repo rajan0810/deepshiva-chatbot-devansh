@@ -13,6 +13,7 @@ from .specialized_chains import (
 from .profile_chain import ProfileExtractionChain
 from .health_advisory_chain import HealthAdvisoryChain
 from .medical_reasoning_chain import MedicalMathChain
+from .document_qa_chain import DocumentQAChain, ConversationalSymptomChecker
 
 __all__ = [
     'GuardrailAndIntentChain',
@@ -27,5 +28,7 @@ __all__ = [
     'HospitalLocatorChain',
     'ProfileExtractionChain',
     'HealthAdvisoryChain',
-    'MedicalMathChain'
+    'MedicalMathChain',
+    'DocumentQAChain',
+    'ConversationalSymptomChecker'
 ]

@@ -6,9 +6,10 @@ import ReactMarkdown from 'react-markdown';
 import {
   Leaf, Send, Sparkles, Loader2, Plus, MessageCircle,
   LogOut, Menu, X, Volume2, Pause, Play, ChevronLeft,
-  ChevronRight, Youtube, Activity, User, Bell
+  ChevronRight, Youtube, Activity, User, Bell, FileText
 } from 'lucide-react';
 import VoiceRecorder from "./VoiceRecorder";
+import DocumentUploader from "./DocumentUploader";
 import { getValidToken, setupTokenRefresh, onAuthChange } from "@/lib/firebase-client";
 import HealthAlertsWidget from "./HealthAlertsWidget";
 import OnboardingModal from "./onboarding/OnboardingModal";
@@ -183,6 +184,7 @@ export default function HealthcareChat() {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isAlertsOpen, setIsAlertsOpen] = useState(false); // Health Alerts
   const [showOnboarding, setShowOnboarding] = useState(false); // Onboarding modal
+  const [showDocumentUpload, setShowDocumentUpload] = useState(false); // Document upload modal
 
   // Audio State
   const [playingMessageIndex, setPlayingMessageIndex] = useState<number | null>(null);
@@ -1040,6 +1042,14 @@ export default function HealthcareChat() {
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowDocumentUpload(true)}
+                className="p-4 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-full transition-all shadow-md hover:shadow-lg hover:-translate-y-1 active:translate-y-0"
+                title="Upload medical document"
+              >
+                <FileText className="w-5 h-5" />
+              </button>
+
               <VoiceRecorder
                 onTranscribed={(text) => handleSubmit(text, true)}
                 onError={console.error}
@@ -1066,6 +1076,29 @@ export default function HealthcareChat() {
         onClose={() => setShowOnboarding(false)}
         onComplete={handleOnboardingComplete}
       />
+
+      {/* Document Upload Modal */}
+      {showDocumentUpload && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-stone-200 px-6 py-4 flex items-center justify-between rounded-t-2xl">
+              <h2 className="text-xl font-serif font-bold text-stone-800 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-primary" />
+                Medical Documents
+              </h2>
+              <button
+                onClick={() => setShowDocumentUpload(false)}
+                className="text-stone-400 hover:text-stone-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              <DocumentUploader />
+            </div>
+          </div>
+        </div>
+      )}
     </div >
   );
 }
