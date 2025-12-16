@@ -6,7 +6,7 @@ import ReactMarkdown from 'react-markdown';
 import {
   Leaf, Send, Sparkles, Loader2, Plus, MessageCircle,
   LogOut, Menu, X, Volume2, Pause, Play, ChevronLeft,
-  ChevronRight, Youtube, Activity, User, Bell, FileText
+  ChevronRight, Youtube, Activity, User, Bell, FileText, MapPin
 } from 'lucide-react';
 import VoiceRecorder from "./VoiceRecorder";
 import DocumentUploader from "./DocumentUploader";
@@ -179,6 +179,7 @@ export default function HealthcareChat() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isLocating, setIsLocating] = useState(false); // Emergency Locator State
   // UI State
   const [isSidebarOpen, setIsSidebarOpen] = useState(true); // Desktop default open
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -505,6 +506,11 @@ export default function HealthcareChat() {
       if (!response.ok) throw new Error('Network response error');
 
       const data = await response.json();
+      console.log("📦 Full API Response:", data);
+      console.log("🔍 Checking emergency conditions:");
+      console.log("  - data.intent:", data.intent);
+      console.log("  - data.symptom_assessment:", data.symptom_assessment);
+      console.log("  - data.output type:", typeof data.output);
 
       // Determine final session ID
       const finalSessionId = data.session_id || requestSessionId;
@@ -535,6 +541,18 @@ export default function HealthcareChat() {
       if (data.audio_url && currentSessionId === finalSessionId) {
         const audio = new Audio(data.audio_url);
         audio.play().catch(console.error);
+      }
+
+      // Check for emergency intent and trigger locator automatically
+      const isEmergency =
+        data.intent === 'emergency' ||
+        (data.symptom_assessment && data.symptom_assessment.is_emergency === true) ||
+        (data.output && typeof data.output === 'object' && data.output.emergency);
+
+      if (isEmergency) {
+        console.log("🚨 Emergency detected! Triggering hospital locator...");
+        // Find nearest hospitals automatically
+        setTimeout(() => handleEmergencyLocator('auto'), 500);
       }
 
     } catch (error: any) {
@@ -610,6 +628,119 @@ export default function HealthcareChat() {
     } catch (err) {
       console.error("Error updating profile:", err);
     }
+  };
+
+  // --- Emergency Locator ---
+  const handleEmergencyLocator = (triggerType: 'manual' | 'auto' = 'manual') => {
+    if (!navigator.geolocation) {
+      if (triggerType === 'manual') alert("Geolocation is not supported by your browser");
+      return;
+    }
+
+    setIsLocating(true);
+
+    // User message only if manual
+    if (triggerType === 'manual') {
+      setMessages(prev => [...prev, {
+        role: 'user',
+        content: "Find nearest hospitals",
+        rawContent: "Find nearest hospitals"
+      }]);
+    }
+
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      const { latitude, longitude } = position.coords;
+      setIsLoading(true);
+
+      try {
+        const res = await fetch(`https://indian-hospital-locator.onrender.com/hospitals/nearby?latitude=${latitude}&longitude=${longitude}&limit=5`);
+
+        if (!res.ok) throw new Error('Failed to fetch hospitals');
+
+        const data = await res.json();
+
+        // Handle various response structures
+        const hospitals = Array.isArray(data) ? data : (data.hospitals || []);
+
+        if (hospitals.length === 0) {
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: "No hospitals found nearby.",
+            rawContent: "No hospitals found."
+          }]);
+          return;
+        }
+
+        const HospitalList = (
+          <div className="space-y-4 w-full">
+            <h3 className="text-xl font-serif font-bold text-red-600 flex items-center gap-2 border-b border-red-100 pb-2">
+              <Activity className="w-6 h-6 animate-pulse" />
+              Emergency Centers Nearby
+            </h3>
+            <div className="grid gap-3">
+              {hospitals.map((hospital: any, i: number) => (
+                <div key={i} className="bg-white p-4 rounded-xl border border-red-100 shadow-sm hover:shadow-md transition-all group">
+                  <div className="flex justify-between items-start gap-2">
+                    <div>
+                      <h4 className="font-bold text-stone-800 text-lg group-hover:text-red-700 transition-colors">{hospital.hospital_name || hospital.name || "Hospital"}</h4>
+                      <p className="text-sm text-stone-600 mt-1 flex items-start gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5 text-stone-400" />
+                        {hospital.address_original || hospital.vicinity || hospital.address || "Address not available"}
+                      </p>
+                    </div>
+                    {hospital.distance_km ? (
+                      <div className="bg-amber-50 text-amber-700 text-xs font-bold px-2 py-1 rounded-full shrink-0">
+                        {hospital.distance_km.toFixed(1)} km
+                      </div>
+                    ) : hospital.rating ? (
+                      <div className="bg-green-50 text-green-700 text-xs font-bold px-2 py-1 rounded-full shrink-0">
+                        {hospital.rating} ★
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="flex gap-3 mt-4 text-sm font-medium">
+                    <a
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent((hospital.hospital_name || "") + ", " + (hospital.address_original || hospital.address || ""))}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm"
+                    >
+                      <MapPin className="w-4 h-4" />
+                      Get Directions
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-stone-500 mt-2 italic">
+              * Please verify availability before visiting. In critical emergencies, call 112 directly.
+            </p>
+          </div>
+        );
+
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: HospitalList,
+          rawContent: JSON.stringify(hospitals)
+        }]);
+
+      } catch (err) {
+        console.error("Hospital locator error:", err);
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: "Sorry, I couldn't locate nearby hospitals at the moment. Please call 112 for emergency.",
+          rawContent: "Error locating hospitals."
+        }]);
+      } finally {
+        setIsLoading(false);
+        setIsLocating(false);
+      }
+    }, (err) => {
+      console.error("Geolocation error:", err);
+      alert("Unable to access your location. Please check browser permissions.");
+      setIsLocating(false);
+    });
   };
 
   // --- Audio Player Logic ---
@@ -1054,6 +1185,17 @@ export default function HealthcareChat() {
                 onTranscribed={(text) => handleSubmit(text, true)}
                 onError={console.error}
               />
+
+              <button
+                onClick={() => handleEmergencyLocator('manual')}
+                disabled={isLocating || isLoading}
+                className={`p-4 rounded-full transition-all shadow-md hover:shadow-lg hover:-translate-y-1 active:translate-y-0 disabled:opacity-50 disabled:shadow-none
+                  ${isLocating ? 'bg-red-100 text-red-400' : 'bg-red-50 hover:bg-red-100 text-red-600'}
+                `}
+                title="Find Nearby Hospitals (Emergency)"
+              >
+                {isLocating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Activity className="w-5 h-5" />}
+              </button>
 
               <button
                 onClick={() => handleSubmit()}

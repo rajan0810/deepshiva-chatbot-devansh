@@ -310,19 +310,27 @@ class HealthcareWorkflow:
                 print(f"⚠️ Failed to fetch YouTube videos: {e}")
             
         elif intent == "symptom_checker":
-            # Use conversational symptom checker
-            symptom_check_result = self.conversational_symptom_checker.run(
-                query=user_input,
-                conversation_history=conversation_history
-            )
+            # 0. Check for EMERGENCY first (bypass conversation)
+            is_emergency_quick, emergency_reason = self.emergency_detector.check_emergency(user_input)
             
-            if symptom_check_result["needs_followup"]:
-                # Still gathering info - return question
-                result["output"] = symptom_check_result["response"]
-                result["conversational"] = True
+            if is_emergency_quick:
+                print(f"🚨 Critical Emergency Detected: {emergency_reason}")
+                # Skip conversation, go straight to handling
+                result.update(await self._handle_symptoms(user_input, user_profile, None))
             else:
-                # Assessment complete - proceed with recommendations
-                result.update(await self._handle_symptoms(user_input, user_profile, symptom_check_result))
+                # 1. Use conversational symptom checker
+                symptom_check_result = self.conversational_symptom_checker.run(
+                    query=user_input,
+                    conversation_history=conversation_history
+                )
+            
+                if symptom_check_result["needs_followup"]:
+                    # Still gathering info - return question
+                    result["output"] = symptom_check_result["response"]
+                    result["conversational"] = True
+                else:
+                    # Assessment complete - proceed with recommendations
+                    result.update(await self._handle_symptoms(user_input, user_profile, symptom_check_result))
             
         elif intent == "facility_locator_support":
             result["output"] = self.hospital_chain.run(user_input)
