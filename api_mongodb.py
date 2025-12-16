@@ -102,7 +102,11 @@ app = FastAPI(
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://*.vercel.app",  # All Vercel deployments
+        "https://*.ngrok-free.app",  # Ngrok tunnels
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
