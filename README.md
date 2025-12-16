@@ -1,5 +1,7 @@
 # 🏥 Swastha - AI Healthcare Assistant
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Developer-Devanshhh/deepshiva-chatbot-devansh)
+
 An intelligent healthcare support system powered by Multi-Agent RAG architecture, combining traditional Ayurvedic wisdom with modern AI technology.
 
 ## ✨ Features
