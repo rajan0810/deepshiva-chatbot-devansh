@@ -118,12 +118,17 @@ class CloudVectorStore:
         """Add documents to Pinecone with namespace support."""
         import uuid
         
+        logger.info(f"📊 Embedding {len(documents)} documents...")
+        
+        # Batch embed all documents at once (much faster!)
+        texts = [doc.page_content for doc in documents]
+        embeddings = self.embedding_manager.embed_documents(texts, show_progress=True)
+        
         ids = []
         vectors = []
         
-        for doc in documents:
+        for doc, embedding in zip(documents, embeddings):
             doc_id = str(uuid.uuid4())
-            embedding = self.embedding_manager.embed_query(doc.page_content)
             
             vectors.append({
                 "id": doc_id,
@@ -136,9 +141,11 @@ class CloudVectorStore:
             ids.append(doc_id)
         
         # Upsert in batches of 100 with namespace
+        logger.info(f"☁️ Uploading {len(vectors)} vectors to Pinecone...")
         for i in range(0, len(vectors), 100):
             batch = vectors[i:i+100]
             self.index.upsert(vectors=batch, namespace=self.namespace)
+            logger.info(f"   Uploaded {min(i+100, len(vectors))}/{len(vectors)} vectors")
         
         logger.info(f"✅ Added {len(documents)} documents to Pinecone namespace '{self.namespace}'")
         return ids
